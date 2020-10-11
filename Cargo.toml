@@ -1,11 +1,11 @@
 [package]
-name = "egui_wgpu"
+name = "egui-wgpu-backend"
 version = "0.1.0"
 authors = ["Nils Hasenbanck <nils@hasenbanck.de>"]
 edition = "2018"
 description = "Backend code to use egui with wgpu."
-homepage = "https://github.com/hasenbanck/egui_wgpu"
-repository = "https://github.com/hasenbanck/egui_wgpu"
+homepage = "https://github.com/hasenbanck/egui-wgpu-backend"
+repository = "https://github.com/hasenbanck/egui-wgpu-backend"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
