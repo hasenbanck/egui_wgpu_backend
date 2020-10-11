@@ -180,7 +180,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "egui-wgpu-backend"
+name = "egui_wgpu_backend"
 version = "0.1.0"
 dependencies = [
  "bytemuck",

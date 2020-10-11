@@ -1,4 +1,4 @@
-# egui-wgpu-backend
+# egui_wgpu_backend
 Backend code to run egui using wgpu.
 
 ## Issues
