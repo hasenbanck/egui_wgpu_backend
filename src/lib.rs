@@ -101,13 +101,13 @@ impl EguiRenderPass {
             color_states: &[wgpu::ColorStateDescriptor {
                 format: output_format,
                 color_blend: wgpu::BlendDescriptor {
-                    src_factor: wgpu::BlendFactor::SrcAlpha,
+                    src_factor: wgpu::BlendFactor::One,
                     dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
                     operation: wgpu::BlendOperation::Add,
                 },
                 alpha_blend: wgpu::BlendDescriptor {
-                    src_factor: wgpu::BlendFactor::OneMinusDstAlpha,
-                    dst_factor: wgpu::BlendFactor::One,
+                    src_factor: wgpu::BlendFactor::One,
+                    dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
                     operation: wgpu::BlendOperation::Add,
                 },
                 write_mask: wgpu::ColorWrite::ALL,
@@ -150,10 +150,10 @@ impl EguiRenderPass {
         physical_width: u32,
         physical_height: u32,
         scale_factor: f32,
-        clear_on_draw: bool,
+        clear_color: Option<wgpu::Color>
     ) {
-        let load_operation = if clear_on_draw {
-            wgpu::LoadOp::Clear(wgpu::Color::BLACK)
+        let load_operation = if let Some(color) = clear_color {
+            wgpu::LoadOp::Clear(color)
         } else {
             wgpu::LoadOp::Load
         };
@@ -182,19 +182,22 @@ impl EguiRenderPass {
                 screen_size: [logical_width as f32, logical_height as f32],
             }]),
         );
-        pass.set_bind_group(
-            0,
-            self.texture_bind_group
-                .as_ref()
-                .unwrap_or_else(|| panic!("egui texture was not set before the first draw")),
-            &[],
-        );
 
         for (((clip_rect, triangles), vertex_buffer), index_buffer) in paint_jobs
             .iter()
             .zip(self.vertex_buffers.iter())
             .zip(self.index_buffers.iter())
         {
+            pass.set_index_buffer(index_buffer.buffer.slice(..));
+            pass.set_vertex_buffer(0, vertex_buffer.buffer.slice(..));
+            pass.set_bind_group(
+                0,
+                self.texture_bind_group
+                    .as_ref()
+                    .unwrap_or_else(|| panic!("egui texture was not set before the first draw")),
+                &[],
+            );
+
             // Transform clip rect to physical pixels.
             let clip_min_x = scale_factor * clip_rect.min.x;
             let clip_min_y = scale_factor * clip_rect.min.y;
@@ -214,14 +217,12 @@ impl EguiRenderPass {
 
             pass.set_scissor_rect(
                 clip_min_x,
-                physical_height - clip_max_y,
+                clip_min_y,
                 clip_max_x - clip_min_x,
                 clip_max_y - clip_min_y,
             );
 
-            pass.set_index_buffer(index_buffer.buffer.slice(..));
-            pass.set_vertex_buffer(0, vertex_buffer.buffer.slice(..));
-            pass.draw_indexed(0..triangles.indices.len() as u32, 0, 0..1)
+            pass.draw_indexed(0..triangles.indices.len() as u32, 0, 0..1);
         }
 
         pass.pop_debug_group();
