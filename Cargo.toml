@@ -1,0 +1,17 @@
+[package]
+name = "egui_wgpu"
+version = "0.1.0"
+authors = ["Nils Hasenbanck <nils@hasenbanck.de>"]
+edition = "2018"
+description = "Backend code to use egui with wgpu."
+homepage = "https://github.com/hasenbanck/egui_wgpu"
+repository = "https://github.com/hasenbanck/egui_wgpu"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+egui = "0.2"
+wgpu = { git = "https://github.com/gfx-rs/wgpu-rs" }
+bytemuck = "1.4"
+
+[build-dependencies]
+shaderc = "0.6"
