@@ -88,15 +88,7 @@ impl EguiRenderPass {
                 module: &fs_module,
                 entry_point: "main",
             }),
-            rasterization_state: Some(wgpu::RasterizationStateDescriptor {
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: wgpu::CullMode::None,
-                clamp_depth: false,
-                depth_bias: 0,
-                depth_bias_slope_scale: 0.0,
-                depth_bias_clamp: 0.0,
-                polygon_mode: wgpu::PolygonMode::Fill,
-            }),
+            rasterization_state: Some(wgpu::RasterizationStateDescriptor::default()),
             primitive_topology: wgpu::PrimitiveTopology::TriangleList,
             color_states: &[wgpu::ColorStateDescriptor {
                 format: output_format,
@@ -183,45 +175,48 @@ impl EguiRenderPass {
             }]),
         );
 
+        pass.set_bind_group(
+            0,
+            self.texture_bind_group
+                .as_ref()
+                .unwrap_or_else(|| panic!("egui texture was not set before the first draw")),
+            &[],
+        );
+
         for (((clip_rect, triangles), vertex_buffer), index_buffer) in paint_jobs
             .iter()
             .zip(self.vertex_buffers.iter())
             .zip(self.index_buffers.iter())
         {
-            pass.set_index_buffer(index_buffer.buffer.slice(..));
-            pass.set_vertex_buffer(0, vertex_buffer.buffer.slice(..));
-            pass.set_bind_group(
-                0,
-                self.texture_bind_group
-                    .as_ref()
-                    .unwrap_or_else(|| panic!("egui texture was not set before the first draw")),
-                &[],
-            );
-
             // Transform clip rect to physical pixels.
             let clip_min_x = scale_factor * clip_rect.min.x;
             let clip_min_y = scale_factor * clip_rect.min.y;
             let clip_max_x = scale_factor * clip_rect.max.x;
             let clip_max_y = scale_factor * clip_rect.max.y;
 
-            // Make sure clip rect can fit withing an `u32`.
+            // Make sure clip rect can fit within an `u32`.
             let clip_min_x = egui::clamp(clip_min_x, 0.0..=physical_width as f32);
             let clip_min_y = egui::clamp(clip_min_y, 0.0..=physical_height as f32);
             let clip_max_x = egui::clamp(clip_max_x, clip_min_x..=physical_width as f32);
             let clip_max_y = egui::clamp(clip_max_y, clip_min_y..=physical_height as f32);
 
-            let clip_min_x = clip_min_x.round() as u32;
-            let clip_min_y = clip_min_y.round() as u32;
-            let clip_max_x = clip_max_x.round() as u32;
-            let clip_max_y = clip_max_y.round() as u32;
+            let clip_min_x = clip_min_x.floor() as u32;
+            let clip_min_y = clip_min_y.floor() as u32;
+            let clip_max_x = clip_max_x.floor() as u32;
+            let clip_max_y = clip_max_y.floor() as u32;
+
+            let width = (clip_max_x - clip_min_x).max(1);
+            let height = (clip_max_y - clip_min_y).max(1);
 
             pass.set_scissor_rect(
                 clip_min_x,
                 clip_min_y,
-                clip_max_x - clip_min_x,
-                clip_max_y - clip_min_y,
+                width,
+                height,
             );
 
+            pass.set_index_buffer(index_buffer.buffer.slice(..));
+            pass.set_vertex_buffer(0, vertex_buffer.buffer.slice(..));
             pass.draw_indexed(0..triangles.indices.len() as u32, 0, 0..1);
         }
 
