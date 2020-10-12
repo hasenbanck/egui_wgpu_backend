@@ -1,3 +1,9 @@
+//! A render backend to use [egui](https://github.com/emilk/egui) with [wgpu](https://github.com/gfx-rs/wgpu-rs).
+//!
+//! You need to create a [`RenderPass`] and feed it with the output data provided by egui.
+//! A basic usage example can be found [here](https://github.com/hasenbanck/egui_example).
+#![warn(missing_docs)]
+
 use bytemuck::{Pod, Zeroable};
 use vk_shader_macros::include_glsl;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
@@ -47,7 +53,7 @@ struct SizedBuffer {
 }
 
 /// RenderPass to render a egui based GUI.
-pub struct EguiRenderPass {
+pub struct RenderPass {
     render_pipeline: wgpu::RenderPipeline,
     index_buffers: Vec<SizedBuffer>,
     vertex_buffers: Vec<SizedBuffer>,
@@ -60,8 +66,8 @@ pub struct EguiRenderPass {
     texture_height: u32,
 }
 
-impl EguiRenderPass {
-    /// Creates a new egui render pass. `output_format` needs to be either `Rgba8UnormSrgb` or `Bgra8UnormSrgb`. Panics if it's not a Srgb format.
+impl RenderPass {
+    /// Creates a new render pass to render a egui UI. `output_format` needs to be either `wgpu::TextureFormat::Rgba8UnormSrgb` or `wgpu::TextureFormat::Bgra8UnormSrgb`. Panics if it's not a Srgb format.
     pub fn new(device: &wgpu::Device, output_format: wgpu::TextureFormat) -> Self {
         if !(output_format == wgpu::TextureFormat::Rgba8UnormSrgb || output_format == wgpu::TextureFormat::Bgra8UnormSrgb) {
             panic!("Incompatible output_format. Needs to be either Rgba8UnormSrgb or Bgra8UnormSrgb: {:?}", output_format);
@@ -200,7 +206,7 @@ impl EguiRenderPass {
         }
     }
 
-    /// Executes the egui render pass.
+    /// Executes the egui render pass. When `clear_on_draw` is set, the output target will get cleared before writing to it.
     pub fn execute(
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
@@ -287,7 +293,7 @@ impl EguiRenderPass {
         pass.pop_debug_group();
     }
 
-    /// Updates the texture used by egui for the fonts etc. When `clear_on_draw` is set, the output target will get cleared before writing to it.
+    /// Updates the texture used by egui for the fonts etc. Should be called before `execute()`.
     pub fn update_texture(
         &mut self,
         device: &wgpu::Device,
@@ -349,7 +355,7 @@ impl EguiRenderPass {
         self.texture_bind_group = Some(bind_group);
     }
 
-    /// Uploads the vertex and index data used by the imgui render pass.
+    /// Uploads the uniform, vertex and index data used by the imgui render pass. Should be called before `execute()`.
     pub fn update_buffers(
         &mut self,
         device: &mut wgpu::Device,
