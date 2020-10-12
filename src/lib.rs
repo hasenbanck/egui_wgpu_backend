@@ -98,8 +98,8 @@ impl EguiRenderPass {
                     operation: wgpu::BlendOperation::Add,
                 },
                 alpha_blend: wgpu::BlendDescriptor {
-                    src_factor: wgpu::BlendFactor::One,
-                    dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                    src_factor: wgpu::BlendFactor::OneMinusDstAlpha,
+                    dst_factor: wgpu::BlendFactor::One,
                     operation: wgpu::BlendOperation::Add,
                 },
                 write_mask: wgpu::ColorWrite::ALL,
