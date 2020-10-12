@@ -358,7 +358,7 @@ impl RenderPass {
         self.texture_bind_group = Some(bind_group);
     }
 
-    /// Uploads the uniform, vertex and index data used by the imgui render pass. Should be called before `execute()`.
+    /// Uploads the uniform, vertex and index data used by the render pass. Should be called before `execute()`.
     pub fn update_buffers(
         &mut self,
         device: &mut wgpu::Device,
