@@ -21,8 +21,11 @@ enum BufferType {
 
 /// Information about the screen used for rendering.
 pub struct ScreenDescriptor {
+    /// Width of the window in physical pixel.
     pub physical_width: u32,
+    /// Height of the window in physical pixel.
     pub physical_height: u32,
+    /// HiDPI scale factor.
     pub scale_factor: f32,
 }
 
