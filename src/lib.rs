@@ -200,10 +200,10 @@ impl EguiRenderPass {
             let clip_max_x = egui::clamp(clip_max_x, clip_min_x..=physical_width as f32);
             let clip_max_y = egui::clamp(clip_max_y, clip_min_y..=physical_height as f32);
 
-            let clip_min_x = clip_min_x.floor() as u32;
-            let clip_min_y = clip_min_y.floor() as u32;
-            let clip_max_x = clip_max_x.floor() as u32;
-            let clip_max_y = clip_max_y.floor() as u32;
+            let clip_min_x = clip_min_x.round() as u32;
+            let clip_min_y = clip_min_y.round() as u32;
+            let clip_max_x = clip_max_x.round() as u32;
+            let clip_max_y = clip_max_y.round() as u32;
 
             let width = (clip_max_x - clip_min_x).max(1);
             let height = (clip_max_y - clip_min_y).max(1);
