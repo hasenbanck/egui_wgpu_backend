@@ -37,8 +37,12 @@ pub struct EguiRenderPass {
 }
 
 impl EguiRenderPass {
-    /// Creates a new egui render pass.
+    /// Creates a new egui render pass. `output_format` needs to be either `Rgba8UnormSrgb` or `Bgra8UnormSrgb`. Panics if it's not a Srgb format.
     pub fn new(device: &wgpu::Device, output_format: wgpu::TextureFormat) -> Self {
+        if !(output_format == wgpu::TextureFormat::Rgba8UnormSrgb || output_format == wgpu::TextureFormat::Bgra8UnormSrgb) {
+            panic!("Incompatible output_format. Needs to be either Rgba8UnormSrgb or Bgra8UnormSrgb: {:?}", output_format);
+        }
+
         let vs_module = device.create_shader_module(wgpu::util::make_spirv(include_bytes!(
             r#"../gen/shader/egui.vert.spv"#
         )));
