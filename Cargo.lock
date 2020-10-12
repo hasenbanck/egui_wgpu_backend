@@ -179,7 +179,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "egui",
- "shaderc",
+ "vk-shader-macros",
  "wgpu",
 ]
 
@@ -874,6 +874,29 @@ name = "unicode-xid"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f7fe0bb3479651439c9112f72b6c505038574c9fbb575ed1bf3b797fa39dd564"
+
+[[package]]
+name = "vk-shader-macros"
+version = "0.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b5028e27627090b995b6e473d8391fadb4c0b69973ae5375fd5533336fdf201"
+dependencies = [
+ "proc-macro-hack",
+ "vk-shader-macros-impl",
+]
+
+[[package]]
+name = "vk-shader-macros-impl"
+version = "0.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1af8b2b88833e89a5b11e425b85ffff5a79425abc0a9356b49feb5a272be119d"
+dependencies = [
+ "proc-macro-hack",
+ "proc-macro2",
+ "quote",
+ "shaderc",
+ "syn",
+]
 
 [[package]]
 name = "wasm-bindgen"

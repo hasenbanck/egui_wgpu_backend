@@ -1,5 +1,9 @@
 use bytemuck::{Pod, Zeroable};
+use vk_shader_macros::include_glsl;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
+
+const EGUI_VERTEX_SHADER: &[u32] = include_glsl!("src/shader/egui.vert");
+const EGUI_FRAGMENT_SHADER: &[u32] = include_glsl!("src/shader/egui.frag");
 
 /// Enum for selecting the right buffer type.
 #[derive(Debug)]
@@ -63,12 +67,8 @@ impl EguiRenderPass {
             panic!("Incompatible output_format. Needs to be either Rgba8UnormSrgb or Bgra8UnormSrgb: {:?}", output_format);
         }
 
-        let vs_module = device.create_shader_module(wgpu::util::make_spirv(include_bytes!(
-            r#"../gen/shader/egui.vert.spv"#
-        )));
-        let fs_module = device.create_shader_module(wgpu::util::make_spirv(include_bytes!(
-            r#"../gen/shader/egui.frag.spv"#
-        )));
+        let vs_module = device.create_shader_module(wgpu::util::make_spirv(bytemuck::cast_slice(&EGUI_VERTEX_SHADER)));
+        let fs_module = device.create_shader_module(wgpu::util::make_spirv(bytemuck::cast_slice(&EGUI_FRAGMENT_SHADER)));
 
         let uniform_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("egui_uniform_buffer"),
