@@ -10,7 +10,7 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 egui = "0.2"
-wgpu = { git = "https://github.com/gfx-rs/wgpu-rs" }
+wgpu = "0.6"
 bytemuck = "1.4"
 
 [build-dependencies]
