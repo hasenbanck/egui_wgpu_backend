@@ -164,9 +164,9 @@ dependencies = [
 
 [[package]]
 name = "egui"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cfb8e71068116cb6cc7d875086d40be4fedde16153e892c3553c243576d0f870"
+checksum = "25fbba5bf27e7b755b2bceb82edafd9790f9af3a8f673f2638f37e937f8f1716"
 dependencies = [
  "ahash",
  "parking_lot",
@@ -175,7 +175,7 @@ dependencies = [
 
 [[package]]
 name = "egui_wgpu_backend"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bytemuck",
  "egui",
