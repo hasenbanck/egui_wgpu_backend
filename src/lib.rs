@@ -100,6 +100,8 @@ impl RenderPass {
 
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("egui_texture_sampler"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
 
