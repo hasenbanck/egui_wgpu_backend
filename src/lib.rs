@@ -88,11 +88,15 @@ impl RenderPass {
 
         let uniform_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("egui_uniform_buffer"),
-            contents: bytemuck::cast_slice(&[UniformBuffer { screen_size: [0.0, 0.0] }]),
+            contents: bytemuck::cast_slice(&[UniformBuffer {
+                screen_size: [0.0, 0.0],
+            }]),
             usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
         });
-        let uniform_buffer =
-            SizedBuffer { buffer: uniform_buffer, size: std::mem::size_of::<UniformBuffer>() };
+        let uniform_buffer = SizedBuffer {
+            buffer: uniform_buffer,
+            size: std::mem::size_of::<UniformBuffer>(),
+        };
 
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("egui_texture_sampler"),
@@ -235,7 +239,10 @@ impl RenderPass {
             color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
                 attachment: color_attachment,
                 resolve_target: None,
-                ops: wgpu::Operations { load: load_operation, store: true },
+                ops: wgpu::Operations {
+                    load: load_operation,
+                    store: true,
+                },
             }],
             depth_stencil_attachment: None,
         });
@@ -248,8 +255,10 @@ impl RenderPass {
         let physical_width = screen_descriptor.physical_width;
         let physical_height = screen_descriptor.physical_height;
 
-        for (((clip_rect, triangles), vertex_buffer), index_buffer) in
-            paint_jobs.iter().zip(self.vertex_buffers.iter()).zip(self.index_buffers.iter())
+        for (((clip_rect, triangles), vertex_buffer), index_buffer) in paint_jobs
+            .iter()
+            .zip(self.vertex_buffers.iter())
+            .zip(self.index_buffers.iter())
         {
             // Transform clip rect to physical pixels.
             let clip_min_x = scale_factor * clip_rect.min.x;
@@ -291,7 +300,9 @@ impl RenderPass {
             egui::TextureId::User(id) => {
                 let id = id as usize;
                 assert!(id < self.user_textures.len());
-                self.user_textures.get(id).expect(format!("user texture {} not found", id).as_str())
+                self.user_textures
+                    .get(id)
+                    .expect(format!("user texture {} not found", id).as_str())
             }
         }
     }
@@ -363,7 +374,11 @@ impl RenderPass {
         });
 
         queue.write_texture(
-            wgpu::TextureCopyView { texture: &texture, mip_level: 0, origin: wgpu::Origin3d::ZERO },
+            wgpu::TextureCopyView {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+            },
             egui_texture.pixels.as_slice(),
             wgpu::TextureDataLayout {
                 offset: 0,
@@ -420,7 +435,10 @@ impl RenderPass {
                     contents: data,
                     usage: wgpu::BufferUsage::INDEX | wgpu::BufferUsage::COPY_DST,
                 });
-                self.index_buffers.push(SizedBuffer { buffer, size: data.len() });
+                self.index_buffers.push(SizedBuffer {
+                    buffer,
+                    size: data.len(),
+                });
             }
 
             let data: &[u8] = as_byte_slice(&triangles.vertices);
@@ -433,7 +451,10 @@ impl RenderPass {
                     usage: wgpu::BufferUsage::VERTEX | wgpu::BufferUsage::COPY_DST,
                 });
 
-                self.vertex_buffers.push(SizedBuffer { buffer, size: data.len() });
+                self.vertex_buffers.push(SizedBuffer {
+                    buffer,
+                    size: data.len(),
+                });
             }
         }
     }
@@ -448,15 +469,21 @@ impl RenderPass {
         data: &[u8],
     ) {
         let (buffer, storage, name) = match buffer_type {
-            BufferType::Index => {
-                (&mut self.index_buffers[index], wgpu::BufferUsage::INDEX, "index")
-            }
-            BufferType::Vertex => {
-                (&mut self.vertex_buffers[index], wgpu::BufferUsage::VERTEX, "vertex")
-            }
-            BufferType::Uniform => {
-                (&mut self.uniform_buffer, wgpu::BufferUsage::UNIFORM, "uniform")
-            }
+            BufferType::Index => (
+                &mut self.index_buffers[index],
+                wgpu::BufferUsage::INDEX,
+                "index",
+            ),
+            BufferType::Vertex => (
+                &mut self.vertex_buffers[index],
+                wgpu::BufferUsage::VERTEX,
+                "vertex",
+            ),
+            BufferType::Uniform => (
+                &mut self.uniform_buffer,
+                wgpu::BufferUsage::UNIFORM,
+                "uniform",
+            ),
         };
 
         if data.len() > buffer.size {
@@ -486,8 +513,15 @@ impl egui::app::TextureAllocator for RenderPass {
         let pixels = pixel_bytes;
 
         let (width, height) = size;
-        self.pending_user_textures
-            .push((self.next_user_texture_id, egui::Texture { version: 0, width, height, pixels }));
+        self.pending_user_textures.push((
+            self.next_user_texture_id,
+            egui::Texture {
+                version: 0,
+                width,
+                height,
+                pixels,
+            },
+        ));
         let id = egui::TextureId::User(self.next_user_texture_id);
         self.next_user_texture_id += 1;
         id
