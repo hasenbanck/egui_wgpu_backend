@@ -65,52 +65,65 @@ pub struct RenderPass {
     texture_bind_group_layout: wgpu::BindGroupLayout,
     texture_bind_group: Option<wgpu::BindGroup>,
     texture_version: Option<u64>,
-    texture_width: u32,
-    texture_height: u32,
+    next_user_texture_id: u64,
+    pending_user_textures: Vec<(u64, egui::Texture)>,
+    user_textures: Vec<wgpu::BindGroup>,
 }
 
 impl RenderPass {
     /// Creates a new render pass to render a egui UI. `output_format` needs to be either `wgpu::TextureFormat::Rgba8UnormSrgb` or `wgpu::TextureFormat::Bgra8UnormSrgb`. Panics if it's not a Srgb format.
     pub fn new(device: &wgpu::Device, output_format: wgpu::TextureFormat) -> Self {
-        if !(output_format == wgpu::TextureFormat::Rgba8UnormSrgb || output_format == wgpu::TextureFormat::Bgra8UnormSrgb) {
+        if !(output_format == wgpu::TextureFormat::Rgba8UnormSrgb
+            || output_format == wgpu::TextureFormat::Bgra8UnormSrgb)
+        {
             panic!("Incompatible output_format. Needs to be either Rgba8UnormSrgb or Bgra8UnormSrgb: {:?}", output_format);
         }
 
-        let vs_module = device.create_shader_module(wgpu::util::make_spirv(bytemuck::cast_slice(&EGUI_VERTEX_SHADER)));
-        let fs_module = device.create_shader_module(wgpu::util::make_spirv(bytemuck::cast_slice(&EGUI_FRAGMENT_SHADER)));
+        let vs_module = device.create_shader_module(wgpu::util::make_spirv(bytemuck::cast_slice(
+            &EGUI_VERTEX_SHADER,
+        )));
+        let fs_module = device.create_shader_module(wgpu::util::make_spirv(bytemuck::cast_slice(
+            &EGUI_FRAGMENT_SHADER,
+        )));
 
         let uniform_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("egui_uniform_buffer"),
-            contents: bytemuck::cast_slice(&[UniformBuffer { screen_size: [0.0, 0.0] }]),
+            contents: bytemuck::cast_slice(&[UniformBuffer {
+                screen_size: [0.0, 0.0],
+            }]),
             usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
         });
-        let uniform_buffer = SizedBuffer { buffer: uniform_buffer, size: std::mem::size_of::<UniformBuffer>() };
+        let uniform_buffer = SizedBuffer {
+            buffer: uniform_buffer,
+            size: std::mem::size_of::<UniformBuffer>(),
+        };
 
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("egui_texture_sampler"),
             ..Default::default()
         });
 
-        let uniform_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("egui_uniform_bind_group_layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStage::VERTEX,
-                    ty: wgpu::BindingType::UniformBuffer {
-                        dynamic: false,
-                        min_binding_size: None,
+        let uniform_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("egui_uniform_bind_group_layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStage::VERTEX,
+                        ty: wgpu::BindingType::UniformBuffer {
+                            dynamic: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
                     },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStage::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler { comparison: false },
-                    count: None,
-                },
-            ],
-        });
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStage::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler { comparison: false },
+                        count: None,
+                    },
+                ],
+            });
 
         let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("egui_uniform_bind_group"),
@@ -118,9 +131,7 @@ impl RenderPass {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::Buffer(
-                        uniform_buffer.buffer.slice(..)
-                    ),
+                    resource: wgpu::BindingResource::Buffer(uniform_buffer.buffer.slice(..)),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
@@ -129,10 +140,10 @@ impl RenderPass {
             ],
         });
 
-        let texture_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("egui_texture_bind_group_layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
+        let texture_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("egui_texture_bind_group_layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::FRAGMENT,
                     ty: wgpu::BindingType::SampledTexture {
@@ -141,9 +152,8 @@ impl RenderPass {
                         dimension: wgpu::TextureViewDimension::D2,
                     },
                     count: None,
-                }
-            ],
-        });
+                }],
+            });
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("egui_pipeline_layout"),
@@ -204,8 +214,9 @@ impl RenderPass {
             texture_bind_group_layout,
             texture_version: None,
             texture_bind_group: None,
-            texture_width: 0,
-            texture_height: 0,
+            next_user_texture_id: 0,
+            pending_user_textures: Vec::new(),
+            user_textures: Vec::new(),
         }
     }
 
@@ -238,19 +249,7 @@ impl RenderPass {
         pass.push_debug_group("egui_pass");
         pass.set_pipeline(&self.render_pipeline);
 
-        pass.set_bind_group(
-            0,
-            &self.uniform_bind_group,
-            &[],
-        );
-
-        pass.set_bind_group(
-            1,
-            self.texture_bind_group
-                .as_ref()
-                .unwrap_or_else(|| panic!("egui texture was not set before the first draw")),
-            &[],
-        );
+        pass.set_bind_group(0, &self.uniform_bind_group, &[]);
 
         let scale_factor = screen_descriptor.scale_factor;
         let physical_width = screen_descriptor.physical_width;
@@ -281,12 +280,8 @@ impl RenderPass {
             let width = (clip_max_x - clip_min_x).max(1);
             let height = (clip_max_y - clip_min_y).max(1);
 
-            pass.set_scissor_rect(
-                clip_min_x,
-                clip_min_y,
-                width,
-                height,
-            );
+            pass.set_scissor_rect(clip_min_x, clip_min_y, width, height);
+            pass.set_bind_group(1, self.get_texture_bind_group(triangles.texture_id), &[]);
 
             pass.set_index_buffer(index_buffer.buffer.slice(..));
             pass.set_vertex_buffer(0, vertex_buffer.buffer.slice(..));
@@ -294,6 +289,22 @@ impl RenderPass {
         }
 
         pass.pop_debug_group();
+    }
+
+    fn get_texture_bind_group(&self, texture_id: egui::TextureId) -> &wgpu::BindGroup {
+        match texture_id {
+            egui::TextureId::Egui => self
+                .texture_bind_group
+                .as_ref()
+                .expect("egui texture was not set before the first draw"),
+            egui::TextureId::User(id) => {
+                let id = id as usize;
+                assert!(id < self.user_textures.len());
+                self.user_textures
+                    .get(id)
+                    .expect(format!("user texture {} not found", id).as_str())
+            }
+        }
     }
 
     /// Updates the texture used by egui for the fonts etc. Should be called before `execute()`.
@@ -307,7 +318,45 @@ impl RenderPass {
         if self.texture_version == Some(egui_texture.version) {
             return;
         }
+        // we need to convert the texture into rgba format
+        let mut pixels = Vec::new();
+        pixels.reserve(4 * pixels.len());
+        for &alpha in egui_texture.pixels.iter() {
+            pixels.extend(egui::Srgba::white_alpha(alpha).to_array().iter());
+        }
+        let egui_texture = egui::Texture {
+            version: egui_texture.version,
+            width: egui_texture.width,
+            height: egui_texture.height,
+            pixels,
+        };
+        let bind_group = self.egui_texture_to_wgpu(device, queue, &egui_texture, "egui");
 
+        self.texture_version = Some(egui_texture.version);
+        self.texture_bind_group = Some(bind_group);
+    }
+
+    /// Updates the user textures that the app allocated. Should be called before `execute()`.
+    pub fn update_user_textures(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+        let pending_user_textures = std::mem::take(&mut self.pending_user_textures);
+        for (id, texture) in pending_user_textures {
+            let bind_group = self.egui_texture_to_wgpu(
+                device,
+                queue,
+                &texture,
+                format!("user_texture{}", id).as_str(),
+            );
+            self.user_textures.push(bind_group);
+        }
+    }
+
+    fn egui_texture_to_wgpu(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        egui_texture: &egui::Texture,
+        label: &str,
+    ) -> wgpu::BindGroup {
         let size = wgpu::Extent3d {
             width: egui_texture.width as u32,
             height: egui_texture.height as u32,
@@ -315,12 +364,12 @@ impl RenderPass {
         };
 
         let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("egui_texture"),
+            label: Some(format!("{}_texture", label).as_str()),
             size,
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::R8Unorm,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
             usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::COPY_DST,
         });
 
@@ -340,22 +389,17 @@ impl RenderPass {
         );
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("egui_texture_bind_group"),
+            label: Some(format!("{}_texture_bind_group", label).as_str()),
             layout: &self.texture_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(
-                        &texture.create_view(&wgpu::TextureViewDescriptor::default()),
-                    ),
-                }
-            ],
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(
+                    &texture.create_view(&wgpu::TextureViewDescriptor::default()),
+                ),
+            }],
         });
 
-        self.texture_width = egui_texture.width as u32;
-        self.texture_height = egui_texture.height as u32;
-        self.texture_version = Some(egui_texture.version);
-        self.texture_bind_group = Some(bind_group);
+        bind_group
     }
 
     /// Uploads the uniform, vertex and index data used by the render pass. Should be called before `execute()`.
@@ -371,12 +415,14 @@ impl RenderPass {
 
         let (logical_width, logical_height) = screen_descriptor.logical_size();
 
-        self.update_buffer(device, queue, BufferType::Uniform, 0,
-                           bytemuck::cast_slice(
-                               &[UniformBuffer {
-                                   screen_size: [logical_width as f32, logical_height as f32]
-                               }]
-                           ),
+        self.update_buffer(
+            device,
+            queue,
+            BufferType::Uniform,
+            0,
+            bytemuck::cast_slice(&[UniformBuffer {
+                screen_size: [logical_width as f32, logical_height as f32],
+            }]),
         );
 
         for (i, (_, triangles)) in paint_jobs.iter().enumerate() {
@@ -433,12 +479,11 @@ impl RenderPass {
                 wgpu::BufferUsage::VERTEX,
                 "vertex",
             ),
-            BufferType::Uniform => {
-                (&mut self.uniform_buffer,
-                 wgpu::BufferUsage::UNIFORM,
-                 "uniform",
-                )
-            }
+            BufferType::Uniform => (
+                &mut self.uniform_buffer,
+                wgpu::BufferUsage::UNIFORM,
+                "uniform",
+            ),
         };
 
         if data.len() > buffer.size {
@@ -451,6 +496,35 @@ impl RenderPass {
         } else {
             queue.write_buffer(&buffer.buffer, 0, data);
         }
+    }
+}
+
+impl egui::app::TextureAllocator for RenderPass {
+    fn new_texture_srgba_premultiplied(
+        &mut self,
+        size: (usize, usize),
+        pixels: &[egui::Srgba],
+    ) -> egui::TextureId {
+        let mut pixel_bytes = Vec::new();
+        pixel_bytes.reserve(4 * pixels.len());
+        for pixel in pixels {
+            pixel_bytes.extend(pixel.to_array().iter());
+        }
+        let pixels = pixel_bytes;
+
+        let (width, height) = size;
+        self.pending_user_textures.push((
+            self.next_user_texture_id,
+            egui::Texture {
+                version: 0,
+                width,
+                height,
+                pixels,
+            },
+        ));
+        let id = egui::TextureId::User(self.next_user_texture_id);
+        self.next_user_texture_id += 1;
+        id
     }
 }
 
