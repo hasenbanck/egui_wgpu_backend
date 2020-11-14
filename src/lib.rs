@@ -407,8 +407,8 @@ impl RenderPass {
     /// Uploads the uniform, vertex and index data used by the render pass. Should be called before `execute()`.
     pub fn update_buffers(
         &mut self,
-        device: &mut wgpu::Device,
-        queue: &mut wgpu::Queue,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
         paint_jobs: &egui::PaintJobs,
         screen_descriptor: &ScreenDescriptor,
     ) {
@@ -464,8 +464,8 @@ impl RenderPass {
     /// Updates the buffers used by egui. Will properly re-size the buffers if needed.
     fn update_buffer(
         &mut self,
-        device: &mut wgpu::Device,
-        queue: &mut wgpu::Queue,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
         buffer_type: BufferType,
         index: usize,
         data: &[u8],
