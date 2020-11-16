@@ -1,6 +1,6 @@
 [package]
 name = "egui_wgpu_backend"
-version = "0.2.1"
+version = "0.2.2"
 authors = ["Nils Hasenbanck <nils@hasenbanck.de>"]
 edition = "2018"
 description = "Backend code to use egui with wgpu."

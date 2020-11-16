@@ -227,7 +227,7 @@ impl RenderPass {
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
         color_attachment: &wgpu::TextureView,
-        paint_jobs: &egui::PaintJobs,
+        paint_jobs: &[egui::paint::PaintJob],
         screen_descriptor: &ScreenDescriptor,
         clear_color: Option<wgpu::Color>,
     ) {
@@ -304,7 +304,7 @@ impl RenderPass {
                 assert!(id < self.user_textures.len());
                 self.user_textures
                     .get(id)
-                    .expect(format!("user texture {} not found", id).as_str())
+                    .unwrap_or_else(|| panic!("user texture {} not found", id))
             }
         }
     }
@@ -407,9 +407,9 @@ impl RenderPass {
     /// Uploads the uniform, vertex and index data used by the render pass. Should be called before `execute()`.
     pub fn update_buffers(
         &mut self,
-        device: &mut wgpu::Device,
-        queue: &mut wgpu::Queue,
-        paint_jobs: &egui::PaintJobs,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        paint_jobs: &[egui::paint::PaintJob],
         screen_descriptor: &ScreenDescriptor,
     ) {
         let index_size = self.index_buffers.len();
@@ -464,8 +464,8 @@ impl RenderPass {
     /// Updates the buffers used by egui. Will properly re-size the buffers if needed.
     fn update_buffer(
         &mut self,
-        device: &mut wgpu::Device,
-        queue: &mut wgpu::Queue,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
         buffer_type: BufferType,
         index: usize,
         data: &[u8],
