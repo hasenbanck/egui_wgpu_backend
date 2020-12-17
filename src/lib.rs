@@ -67,7 +67,7 @@ pub struct RenderPass {
     texture_version: Option<u64>,
     next_user_texture_id: u64,
     pending_user_textures: Vec<(u64, egui::Texture)>,
-    user_textures: Vec<wgpu::BindGroup>,
+    user_textures: Vec<Option<wgpu::BindGroup>>,
 }
 
 impl RenderPass {
@@ -305,6 +305,8 @@ impl RenderPass {
                 self.user_textures
                     .get(id)
                     .unwrap_or_else(|| panic!("user texture {} not found", id))
+                    .as_ref()
+                    .unwrap_or_else(|| panic!("user texture {} freed", id))
             }
         }
     }
@@ -348,7 +350,7 @@ impl RenderPass {
                 &texture,
                 format!("user_texture{}", id).as_str(),
             );
-            self.user_textures.push(bind_group);
+            self.user_textures.push(Some(bind_group));
         }
     }
 
@@ -502,31 +504,45 @@ impl RenderPass {
 }
 
 impl egui::app::TextureAllocator for RenderPass {
-    fn new_texture_srgba_premultiplied(
-        &mut self,
-        size: (usize, usize),
-        pixels: &[egui::Srgba],
-    ) -> egui::TextureId {
-        let mut pixel_bytes = Vec::new();
-        pixel_bytes.reserve(4 * pixels.len());
-        for pixel in pixels {
-            pixel_bytes.extend(pixel.to_array().iter());
-        }
-        let pixels = pixel_bytes;
-
-        let (width, height) = size;
-        self.pending_user_textures.push((
-            self.next_user_texture_id,
-            egui::Texture {
-                version: 0,
-                width,
-                height,
-                pixels,
-            },
-        ));
+    fn alloc(&mut self) -> egui::TextureId {
         let id = egui::TextureId::User(self.next_user_texture_id);
         self.next_user_texture_id += 1;
         id
+    }
+
+    fn set_srgba_premultiplied(
+        &mut self,
+        id: egui::TextureId,
+        size: (usize, usize),
+        pixels: &[egui::Srgba],
+    ) {
+        if let egui::TextureId::User(id) = id {
+            let mut pixel_bytes = Vec::new();
+            pixel_bytes.reserve(4 * pixels.len());
+            for pixel in pixels {
+                pixel_bytes.extend(pixel.to_array().iter());
+            }
+            let pixels = pixel_bytes;
+
+            let (width, height) = size;
+            self.pending_user_textures.push((
+                id,
+                egui::Texture {
+                    version: 0,
+                    width,
+                    height,
+                    pixels,
+                },
+            ));
+        }
+    }
+
+    fn free(&mut self, id: egui::TextureId) {
+        if let egui::TextureId::User(id) = id {
+            self.user_textures
+                .get_mut(id as usize)
+                .and_then(|option| option.take());
+        }
     }
 }
 
