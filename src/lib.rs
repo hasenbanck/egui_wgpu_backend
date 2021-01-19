@@ -5,6 +5,7 @@
 #![warn(missing_docs)]
 
 use bytemuck::{Pod, Zeroable};
+pub use epi;
 pub use epi::egui;
 pub use wgpu;
 use wgpu::include_spirv;
