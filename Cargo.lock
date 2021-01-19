@@ -185,7 +185,8 @@ dependencies = [
 [[package]]
 name = "egui"
 version = "0.8.0"
-source = "git+https://github.com/emilk/egui?rev=90a0ce969beb96506d5a3e9a012765ae46774969#90a0ce969beb96506d5a3e9a012765ae46774969"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6f550e7f51023f5ea92eae420fae368a52927deed22dcbefc7c22c140b02d7b4"
 dependencies = [
  "epaint",
 ]
@@ -202,12 +203,14 @@ dependencies = [
 [[package]]
 name = "emath"
 version = "0.8.0"
-source = "git+https://github.com/emilk/egui?rev=90a0ce969beb96506d5a3e9a012765ae46774969#90a0ce969beb96506d5a3e9a012765ae46774969"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d876a5b910712537191b8d9aa1550a212a62fd2dd6f44f6ca5c671cf89bb841"
 
 [[package]]
 name = "epaint"
 version = "0.8.0"
-source = "git+https://github.com/emilk/egui?rev=90a0ce969beb96506d5a3e9a012765ae46774969#90a0ce969beb96506d5a3e9a012765ae46774969"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9fdb7fdb35896a43ad950a28b5188240cfbd186b22aa50269978575170b73c83"
 dependencies = [
  "ahash 0.6.2",
  "atomic_refcell",
@@ -218,7 +221,8 @@ dependencies = [
 [[package]]
 name = "epi"
 version = "0.8.0"
-source = "git+https://github.com/emilk/egui?rev=90a0ce969beb96506d5a3e9a012765ae46774969#90a0ce969beb96506d5a3e9a012765ae46774969"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e358eaf8b9898aa366bed1c0645dd439f272341e5cd1404c8a6a604e544ee065"
 dependencies = [
  "egui",
 ]
