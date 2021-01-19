@@ -287,7 +287,18 @@ impl RenderPass {
             let width = (clip_max_x - clip_min_x).max(1);
             let height = (clip_max_y - clip_min_y).max(1);
 
-            pass.set_scissor_rect(clip_min_x, clip_min_y, width, height);
+            {
+                let x = clip_min_x.min(physical_width);
+                let y = clip_min_y.min(physical_height);
+                let width = width.min(physical_width - x);
+                let height = height.min(physical_height - y);
+
+                if width == 0 || height == 0 {
+                    continue;
+                }
+
+                pass.set_scissor_rect(x, y, width, height);
+            }
             pass.set_bind_group(1, self.get_texture_bind_group(triangles.texture_id), &[]);
 
             pass.set_index_buffer(index_buffer.buffer.slice(..), wgpu::IndexFormat::Uint32);
