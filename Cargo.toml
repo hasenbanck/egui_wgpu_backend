@@ -10,8 +10,6 @@ license = "MIT OR Apache-2.0"
 readme = "README.md"
 
 [dependencies]
-egui = "0.8"
-epi = "0.8"
-wgpu = "0.6"
-bytemuck = "1.5"
-vk-shader-macros = "0.2"
+epi =  { git = "https://github.com/emilk/egui", rev = "90a0ce969beb96506d5a3e9a012765ae46774969" }
+wgpu = { git = "https://github.com/gfx-rs/wgpu-rs", rev = "baf6c433bb8daa230c350c777e5f26fc95382495" }
+bytemuck = "1.5.0"

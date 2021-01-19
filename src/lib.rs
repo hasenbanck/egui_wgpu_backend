@@ -5,11 +5,10 @@
 #![warn(missing_docs)]
 
 use bytemuck::{Pod, Zeroable};
-use vk_shader_macros::include_glsl;
+pub use epi::egui;
+pub use wgpu;
+use wgpu::include_spirv;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
-
-const EGUI_VERTEX_SHADER: &[u32] = include_glsl!("src/shader/egui.vert");
-const EGUI_FRAGMENT_SHADER: &[u32] = include_glsl!("src/shader/egui.frag");
 
 /// Enum for selecting the right buffer type.
 #[derive(Debug)]
@@ -79,12 +78,8 @@ impl RenderPass {
             panic!("Incompatible output_format. Needs to be either Rgba8UnormSrgb or Bgra8UnormSrgb: {:?}", output_format);
         }
 
-        let vs_module = device.create_shader_module(wgpu::util::make_spirv(bytemuck::cast_slice(
-            &EGUI_VERTEX_SHADER,
-        )));
-        let fs_module = device.create_shader_module(wgpu::util::make_spirv(bytemuck::cast_slice(
-            &EGUI_FRAGMENT_SHADER,
-        )));
+        let vs_module = device.create_shader_module(&include_spirv!("shader/egui.vert.spirv"));
+        let fs_module = device.create_shader_module(&include_spirv!("shader/egui.frag.spirv"));
 
         let uniform_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("egui_uniform_buffer"),
@@ -112,16 +107,20 @@ impl RenderPass {
                     wgpu::BindGroupLayoutEntry {
                         binding: 0,
                         visibility: wgpu::ShaderStage::VERTEX,
-                        ty: wgpu::BindingType::UniformBuffer {
-                            dynamic: false,
+                        ty: wgpu::BindingType::Buffer {
+                            has_dynamic_offset: false,
                             min_binding_size: None,
+                            ty: wgpu::BufferBindingType::Uniform,
                         },
                         count: None,
                     },
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,
                         visibility: wgpu::ShaderStage::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler { comparison: false },
+                        ty: wgpu::BindingType::Sampler {
+                            filtering: true,
+                            comparison: false,
+                        },
                         count: None,
                     },
                 ],
@@ -133,7 +132,11 @@ impl RenderPass {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::Buffer(uniform_buffer.buffer.slice(..)),
+                    resource: wgpu::BindingResource::Buffer {
+                        buffer: &uniform_buffer.buffer,
+                        offset: 0,
+                        size: None,
+                    },
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
@@ -148,10 +151,10 @@ impl RenderPass {
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStage::FRAGMENT,
-                    ty: wgpu::BindingType::SampledTexture {
+                    ty: wgpu::BindingType::Texture {
                         multisampled: false,
-                        component_type: wgpu::TextureComponentType::Float,
-                        dimension: wgpu::TextureViewDimension::D2,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
                     },
                     count: None,
                 }],
@@ -192,7 +195,7 @@ impl RenderPass {
             }],
             depth_stencil_state: None,
             vertex_state: wgpu::VertexStateDescriptor {
-                index_format: wgpu::IndexFormat::Uint32,
+                index_format: Some(wgpu::IndexFormat::Uint32),
                 vertex_buffers: &[wgpu::VertexBufferDescriptor {
                     stride: 5 * 4,
                     step_mode: wgpu::InputStepMode::Vertex,
@@ -247,6 +250,7 @@ impl RenderPass {
                 },
             }],
             depth_stencil_attachment: None,
+            label: Some("egui main render pass"),
         });
         pass.push_debug_group("egui_pass");
         pass.set_pipeline(&self.render_pipeline);
@@ -285,7 +289,7 @@ impl RenderPass {
             pass.set_scissor_rect(clip_min_x, clip_min_y, width, height);
             pass.set_bind_group(1, self.get_texture_bind_group(triangles.texture_id), &[]);
 
-            pass.set_index_buffer(index_buffer.buffer.slice(..));
+            pass.set_index_buffer(index_buffer.buffer.slice(..), wgpu::IndexFormat::Uint32);
             pass.set_vertex_buffer(0, vertex_buffer.buffer.slice(..));
             pass.draw_indexed(0..triangles.indices.len() as u32, 0, 0..1);
         }
@@ -323,16 +327,15 @@ impl RenderPass {
             return;
         }
         // we need to convert the texture into rgba format
-        let mut pixels = Vec::new();
-        pixels.reserve(4 * pixels.len());
-        for &alpha in egui_texture.pixels.iter() {
-            pixels.extend(egui::Color32::from_white_alpha(alpha).to_array().iter());
-        }
         let egui_texture = egui::Texture {
             version: egui_texture.version,
             width: egui_texture.width,
             height: egui_texture.height,
-            pixels,
+            pixels: egui_texture
+                .pixels
+                .iter()
+                .flat_map(|p| std::iter::repeat(*p).take(4))
+                .collect(),
         };
         let bind_group = self.egui_texture_to_wgpu(device, queue, &egui_texture, "egui");
 
@@ -504,21 +507,22 @@ impl RenderPass {
 }
 
 impl epi::TextureAllocator for RenderPass {
-
     fn alloc_srgba_premultiplied(
         &mut self,
         size: (usize, usize),
         srgba_pixels: &[egui::Color32],
     ) -> egui::TextureId {
         let id = self.next_user_texture_id;
-        let texture_id = egui::TextureId::User(id);
         self.next_user_texture_id += 1;
-        let mut pixel_bytes = Vec::new();
-        pixel_bytes.reserve(4 * srgba_pixels.len());
-        for pixel in srgba_pixels {
-            pixel_bytes.extend(pixel.to_array().iter());
+
+        let mut pixels = vec![0u8; srgba_pixels.len() * 4];
+        unsafe {
+            std::ptr::copy(
+                srgba_pixels.as_ptr().cast(),
+                pixels.as_mut_ptr(),
+                pixels.len(),
+            );
         }
-        let pixels = pixel_bytes;
 
         let (width, height) = size;
         self.pending_user_textures.push((
@@ -530,7 +534,8 @@ impl epi::TextureAllocator for RenderPass {
                 pixels,
             },
         ));
-        texture_id
+
+        egui::TextureId::User(id)
     }
 
     fn free(&mut self, id: egui::TextureId) {
