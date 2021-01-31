@@ -326,7 +326,7 @@ impl RenderPass {
         let mut pixels = Vec::new();
         pixels.reserve(4 * pixels.len());
         for &alpha in egui_texture.pixels.iter() {
-            pixels.extend(egui::Srgba::white_alpha(alpha).to_array().iter());
+            pixels.extend(egui::Color32::from_white_alpha(alpha).to_array().iter());
         }
         let egui_texture = egui::Texture {
             version: egui_texture.version,
@@ -503,38 +503,34 @@ impl RenderPass {
     }
 }
 
-impl egui::app::TextureAllocator for RenderPass {
-    fn alloc(&mut self) -> egui::TextureId {
-        let id = egui::TextureId::User(self.next_user_texture_id);
-        self.next_user_texture_id += 1;
-        id
-    }
+impl epi::TextureAllocator for RenderPass {
 
-    fn set_srgba_premultiplied(
+    fn alloc_srgba_premultiplied(
         &mut self,
-        id: egui::TextureId,
         size: (usize, usize),
-        pixels: &[egui::Srgba],
-    ) {
-        if let egui::TextureId::User(id) = id {
-            let mut pixel_bytes = Vec::new();
-            pixel_bytes.reserve(4 * pixels.len());
-            for pixel in pixels {
-                pixel_bytes.extend(pixel.to_array().iter());
-            }
-            let pixels = pixel_bytes;
-
-            let (width, height) = size;
-            self.pending_user_textures.push((
-                id,
-                egui::Texture {
-                    version: 0,
-                    width,
-                    height,
-                    pixels,
-                },
-            ));
+        srgba_pixels: &[egui::Color32],
+    ) -> egui::TextureId {
+        let id = self.next_user_texture_id;
+        let texture_id = egui::TextureId::User(id);
+        self.next_user_texture_id += 1;
+        let mut pixel_bytes = Vec::new();
+        pixel_bytes.reserve(4 * srgba_pixels.len());
+        for pixel in srgba_pixels {
+            pixel_bytes.extend(pixel.to_array().iter());
         }
+        let pixels = pixel_bytes;
+
+        let (width, height) = size;
+        self.pending_user_textures.push((
+            id,
+            egui::Texture {
+                version: 0,
+                width,
+                height,
+                pixels,
+            },
+        ));
+        texture_id
     }
 
     fn free(&mut self, id: egui::TextureId) {
