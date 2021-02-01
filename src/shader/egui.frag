@@ -1,3 +1,5 @@
+// glslc -g -x glsl -O egui.frag -o egui.frag.spirv
+
 #version 450
 
 layout(location = 0) in vec2 v_tex_coord;
