@@ -292,11 +292,13 @@ impl RenderPass {
             let height = (clip_max_y - clip_min_y).max(1);
 
             {
+                // clip scissor rectangle to target size
                 let x = clip_min_x.min(physical_width);
                 let y = clip_min_y.min(physical_height);
                 let width = width.min(physical_width - x);
                 let height = height.min(physical_height - y);
 
+                // skip rendering with zero-sized clip areas
                 if width == 0 || height == 0 {
                     continue;
                 }
