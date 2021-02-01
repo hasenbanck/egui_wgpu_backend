@@ -4,12 +4,12 @@
 //! A basic usage example can be found [here](https://github.com/hasenbanck/egui_example).
 #![warn(missing_docs)]
 
-use bytemuck::{Pod, Zeroable};
 pub use epi;
 pub use epi::egui;
 pub use wgpu;
-use wgpu::include_spirv;
-use wgpu::util::{BufferInitDescriptor, DeviceExt};
+
+use bytemuck::{Pod, Zeroable};
+use wgpu::{include_spirv, util::DeviceExt};
 
 /// Enum for selecting the right buffer type.
 #[derive(Debug)]
@@ -82,7 +82,7 @@ impl RenderPass {
         let vs_module = device.create_shader_module(&include_spirv!("shader/egui.vert.spirv"));
         let fs_module = device.create_shader_module(&include_spirv!("shader/egui.frag.spirv"));
 
-        let uniform_buffer = device.create_buffer_init(&BufferInitDescriptor {
+        let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("egui_uniform_buffer"),
             contents: bytemuck::cast_slice(&[UniformBuffer {
                 screen_size: [0.0, 0.0],
@@ -453,7 +453,7 @@ impl RenderPass {
             if i < index_size {
                 self.update_buffer(device, queue, BufferType::Index, i, data)
             } else {
-                let buffer = device.create_buffer_init(&BufferInitDescriptor {
+                let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("egui_index_buffer"),
                     contents: data,
                     usage: wgpu::BufferUsage::INDEX | wgpu::BufferUsage::COPY_DST,
@@ -468,7 +468,7 @@ impl RenderPass {
             if i < vertex_size {
                 self.update_buffer(device, queue, BufferType::Vertex, i, data)
             } else {
-                let buffer = device.create_buffer_init(&BufferInitDescriptor {
+                let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("egui_vertex_buffer"),
                     contents: data,
                     usage: wgpu::BufferUsage::VERTEX | wgpu::BufferUsage::COPY_DST,
@@ -511,7 +511,7 @@ impl RenderPass {
 
         if data.len() > buffer.size {
             buffer.size = data.len();
-            buffer.buffer = device.create_buffer_init(&BufferInitDescriptor {
+            buffer.buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some(format!("egui_{}_buffer", name).as_str()),
                 contents: bytemuck::cast_slice(data),
                 usage: storage | wgpu::BufferUsage::COPY_DST,
