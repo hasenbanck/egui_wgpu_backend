@@ -170,35 +170,11 @@ impl RenderPass {
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("egui_pipeline"),
             layout: Some(&pipeline_layout),
-            vertex_stage: wgpu::ProgrammableStageDescriptor {
+            vertex: wgpu::VertexState {
+                entry_point: "main",
                 module: &vs_module,
-                entry_point: "main",
-            },
-            fragment_stage: Some(wgpu::ProgrammableStageDescriptor {
-                module: &fs_module,
-                entry_point: "main",
-            }),
-            rasterization_state: Some(wgpu::RasterizationStateDescriptor::default()),
-            primitive_topology: wgpu::PrimitiveTopology::TriangleList,
-            color_states: &[wgpu::ColorStateDescriptor {
-                format: output_format,
-                color_blend: wgpu::BlendDescriptor {
-                    src_factor: wgpu::BlendFactor::One,
-                    dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-                    operation: wgpu::BlendOperation::Add,
-                },
-                alpha_blend: wgpu::BlendDescriptor {
-                    src_factor: wgpu::BlendFactor::OneMinusDstAlpha,
-                    dst_factor: wgpu::BlendFactor::One,
-                    operation: wgpu::BlendOperation::Add,
-                },
-                write_mask: wgpu::ColorWrite::ALL,
-            }],
-            depth_stencil_state: None,
-            vertex_state: wgpu::VertexStateDescriptor {
-                index_format: Some(wgpu::IndexFormat::Uint32),
-                vertex_buffers: &[wgpu::VertexBufferDescriptor {
-                    stride: 5 * 4,
+                buffers: &[wgpu::VertexBufferLayout {
+                    array_stride: 5 * 4,
                     step_mode: wgpu::InputStepMode::Vertex,
                     // 0: vec2 position
                     // 1: vec2 texture coordinates
@@ -206,9 +182,37 @@ impl RenderPass {
                     attributes: &wgpu::vertex_attr_array![0 => Float2, 1 => Float2, 2 => Uint],
                 }],
             },
-            sample_count: 1,
-            sample_mask: !0,
-            alpha_to_coverage_enabled: false,
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                cull_mode: wgpu::CullMode::default(),
+                front_face: wgpu::FrontFace::default(),
+                polygon_mode: wgpu::PolygonMode::default(),
+                strip_index_format: Some(wgpu::IndexFormat::Uint32),
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState {
+                alpha_to_coverage_enabled: false,
+                count: 1,
+                mask: !0,
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &fs_module,
+                entry_point: "main",
+                targets: &[wgpu::ColorTargetState {
+                    format: output_format,
+                    color_blend: wgpu::BlendState {
+                        src_factor: wgpu::BlendFactor::One,
+                        dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                        operation: wgpu::BlendOperation::Add,
+                    },
+                    alpha_blend: wgpu::BlendState {
+                        src_factor: wgpu::BlendFactor::OneMinusDstAlpha,
+                        dst_factor: wgpu::BlendFactor::One,
+                        operation: wgpu::BlendOperation::Add,
+                    },
+                    write_mask: wgpu::ColorWrite::ALL,
+                }],
+            }),
         });
 
         Self {

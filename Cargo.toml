@@ -1,6 +1,6 @@
 [package]
 name = "egui_wgpu_backend"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Nils Hasenbanck <nils@hasenbanck.de>"]
 edition = "2018"
 description = "Backend code to use egui with wgpu."
@@ -11,5 +11,5 @@ readme = "README.md"
 
 [dependencies]
 epi = "0.8.0"
-wgpu = { git = "https://github.com/gfx-rs/wgpu-rs", rev = "baf6c433bb8daa230c350c777e5f26fc95382495" }
+wgpu = "0.7"
 bytemuck = "1.5.0"
