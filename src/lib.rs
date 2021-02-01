@@ -534,12 +534,8 @@ impl epi::TextureAllocator for RenderPass {
         self.next_user_texture_id += 1;
 
         let mut pixels = vec![0u8; srgba_pixels.len() * 4];
-        unsafe {
-            std::ptr::copy(
-                srgba_pixels.as_ptr().cast(),
-                pixels.as_mut_ptr(),
-                pixels.len(),
-            );
+        for (target, given) in pixels.chunks_exact_mut(4).zip(srgba_pixels.iter()) {
+            target.copy_from_slice(&given.to_array());
         }
 
         let (width, height) = size;
