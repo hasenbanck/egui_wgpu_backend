@@ -235,7 +235,7 @@ impl RenderPass {
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
         color_attachment: &wgpu::TextureView,
-        paint_jobs: &[egui::paint::PaintJob],
+        paint_jobs: &[egui::paint::ClippedMesh],
         screen_descriptor: &ScreenDescriptor,
         clear_color: Option<wgpu::Color>,
     ) {
@@ -266,7 +266,7 @@ impl RenderPass {
         let physical_width = screen_descriptor.physical_width;
         let physical_height = screen_descriptor.physical_height;
 
-        for (((clip_rect, triangles), vertex_buffer), index_buffer) in paint_jobs
+        for ((egui::ClippedMesh(clip_rect, mesh), vertex_buffer), index_buffer) in paint_jobs
             .iter()
             .zip(self.vertex_buffers.iter())
             .zip(self.index_buffers.iter())
@@ -305,11 +305,11 @@ impl RenderPass {
 
                 pass.set_scissor_rect(x, y, width, height);
             }
-            pass.set_bind_group(1, self.get_texture_bind_group(triangles.texture_id), &[]);
+            pass.set_bind_group(1, self.get_texture_bind_group(mesh.texture_id), &[]);
 
             pass.set_index_buffer(index_buffer.buffer.slice(..), wgpu::IndexFormat::Uint32);
             pass.set_vertex_buffer(0, vertex_buffer.buffer.slice(..));
-            pass.draw_indexed(0..triangles.indices.len() as u32, 0, 0..1);
+            pass.draw_indexed(0..mesh.indices.len() as u32, 0, 0..1);
         }
 
         pass.pop_debug_group();
@@ -432,7 +432,7 @@ impl RenderPass {
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        paint_jobs: &[egui::paint::PaintJob],
+        paint_jobs: &[egui::paint::ClippedMesh],
         screen_descriptor: &ScreenDescriptor,
     ) {
         let index_size = self.index_buffers.len();
@@ -450,8 +450,8 @@ impl RenderPass {
             }]),
         );
 
-        for (i, (_, triangles)) in paint_jobs.iter().enumerate() {
-            let data: &[u8] = bytemuck::cast_slice(&triangles.indices);
+        for (i, egui::ClippedMesh(_, mesh)) in paint_jobs.iter().enumerate() {
+            let data: &[u8] = bytemuck::cast_slice(&mesh.indices);
             if i < index_size {
                 self.update_buffer(device, queue, BufferType::Index, i, data)
             } else {
@@ -466,7 +466,7 @@ impl RenderPass {
                 });
             }
 
-            let data: &[u8] = as_byte_slice(&triangles.vertices);
+            let data: &[u8] = as_byte_slice(&mesh.vertices);
             if i < vertex_size {
                 self.update_buffer(device, queue, BufferType::Vertex, i, data)
             } else {
