@@ -344,16 +344,19 @@ impl RenderPass {
         if self.texture_version == Some(egui_texture.version) {
             return;
         }
-        // we need to convert the texture into rgba format
+        // we need to convert the texture into rgba_srgb format
+        let mut pixels: Vec<u8> = Vec::with_capacity(egui_texture.pixels.len() * 4);
+        for srgba in egui_texture.srgba_pixels() {
+            pixels.push(srgba.r());
+            pixels.push(srgba.g());
+            pixels.push(srgba.b());
+            pixels.push(srgba.a());
+        }
         let egui_texture = egui::Texture {
             version: egui_texture.version,
             width: egui_texture.width,
             height: egui_texture.height,
-            pixels: egui_texture
-                .pixels
-                .iter()
-                .flat_map(|p| std::iter::repeat(*p).take(4))
-                .collect(),
+            pixels,
         };
         let bind_group = self.egui_texture_to_wgpu(device, queue, &egui_texture, "egui");
 
@@ -375,6 +378,8 @@ impl RenderPass {
         }
     }
 
+    // Assumes egui_texture contains srgb data.
+    // This does not match how egui::Texture is documented as of writing, but this is how it is used for user textures.
     fn egui_texture_to_wgpu(
         &self,
         device: &wgpu::Device,
