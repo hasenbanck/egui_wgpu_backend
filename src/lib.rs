@@ -9,7 +9,7 @@ pub use epi::egui;
 pub use wgpu;
 
 use bytemuck::{Pod, Zeroable};
-use wgpu::{include_spirv, util::DeviceExt};
+use wgpu::{include_spirv, util::DeviceExt, Texture, BindGroup, CommandEncoderDescriptor, TextureCopyView};
 
 /// Enum for selecting the right buffer type.
 #[derive(Debug)]
@@ -67,7 +67,8 @@ pub struct RenderPass {
     texture_version: Option<u64>,
     next_user_texture_id: u64,
     pending_user_textures: Vec<(u64, egui::Texture)>,
-    user_textures: Vec<Option<wgpu::BindGroup>>,
+    //for support changing texture
+    user_textures: Vec<Option<(wgpu::Texture,wgpu::BindGroup)>>,
 }
 
 impl RenderPass {
@@ -324,11 +325,12 @@ impl RenderPass {
             egui::TextureId::User(id) => {
                 let id = id as usize;
                 assert!(id < self.user_textures.len());
-                self.user_textures
+                &(self.user_textures
                     .get(id)
                     .unwrap_or_else(|| panic!("user texture {} not found", id))
                     .as_ref()
                     .unwrap_or_else(|| panic!("user texture {} freed", id))
+                    .1)
             }
         }
     }
@@ -361,7 +363,7 @@ impl RenderPass {
         let bind_group = self.egui_texture_to_wgpu(device, queue, &egui_texture, "egui");
 
         self.texture_version = Some(egui_texture.version);
-        self.texture_bind_group = Some(bind_group);
+        self.texture_bind_group = Some(bind_group.1);
     }
 
     /// Updates the user textures that the app allocated. Should be called before `execute()`.
@@ -377,7 +379,39 @@ impl RenderPass {
             self.user_textures.push(Some(bind_group));
         }
     }
+    /// replace given texture id 's buffer to given wgpu:texture
+    /// copy by gpu so data is in device memory
+    /// Should be called before `execute()`.
+    pub fn over_write_texture(&mut self,device:&wgpu::Device,
+                              queue:&wgpu::Queue,
+                              texture_id:egui::TextureId ,
+                              replacer:&wgpu::Texture,
+                              texture_size:wgpu::Extent3d){
 
+
+        if let egui::TextureId::User(id)=texture_id {
+         let x=&(self.user_textures
+             .get(id as usize)
+             .expect("Texture id is invalid")
+             .as_ref()
+             .expect("Texture is freed")
+             .0);
+            //create command buffer for copy
+            let mut command_encoder_for_copy_image = device.create_command_encoder(&CommandEncoderDescriptor{ label: Some("Texture Replace Command") });
+            //create command
+            command_encoder_for_copy_image.copy_texture_to_texture(TextureCopyView{
+                texture: replacer,
+                mip_level: 0,
+                origin: Default::default()
+            }, TextureCopyView{
+                texture: x,
+                mip_level: 0,
+                origin: Default::default()
+            }, texture_size);
+
+            queue.submit(std::iter::once(command_encoder_for_copy_image.finish()));
+        }
+    }
     // Assumes egui_texture contains srgb data.
     // This does not match how egui::Texture is documented as of writing, but this is how it is used for user textures.
     fn egui_texture_to_wgpu(
@@ -386,7 +420,7 @@ impl RenderPass {
         queue: &wgpu::Queue,
         egui_texture: &egui::Texture,
         label: &str,
-    ) -> wgpu::BindGroup {
+    ) -> (Texture, BindGroup) {
         let size = wgpu::Extent3d {
             width: egui_texture.width as u32,
             height: egui_texture.height as u32,
@@ -429,7 +463,7 @@ impl RenderPass {
             }],
         });
 
-        bind_group
+        (texture,bind_group)
     }
 
     /// Uploads the uniform, vertex and index data used by the render pass. Should be called before `execute()`.
