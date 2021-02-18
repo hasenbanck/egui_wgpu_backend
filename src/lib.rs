@@ -10,6 +10,7 @@ pub use wgpu;
 
 use bytemuck::{Pod, Zeroable};
 use wgpu::{include_spirv, util::DeviceExt, Texture, BindGroup, CommandEncoderDescriptor, TextureCopyView};
+use std::sync::Arc;
 
 /// Enum for selecting the right buffer type.
 #[derive(Debug)]
@@ -68,10 +69,32 @@ pub struct RenderPass {
     next_user_texture_id: u64,
     pending_user_textures: Vec<(u64, egui::Texture)>,
     //for support changing texture
-    user_textures: Vec<Option<(wgpu::Texture,wgpu::BindGroup)>>,
+    user_textures: Vec<Option<(Arc<wgpu::Texture>,wgpu::BindGroup)>>,
 }
 
 impl RenderPass {
+    /// Assume wgpu::Texture as egui::TextureId
+    ///  i.e given wgpu::Texture (wgpu Texture handle) as egui::TextureId (egui texture handle)without allocation
+    ///  this method return  only egui::TextureId::UserTexture(u64)
+    pub fn texture_as_egui_texture_id(&mut self,device:&wgpu::Device ,texture_handle:Arc<wgpu::Texture>)->egui::TextureId{
+        //bind has been done so i do not add to pending
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(format!("user_{}_texture_bind_group", self.next_user_texture_id).as_str()),
+            layout: &self.texture_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(
+                    &texture_handle.create_view(&wgpu::TextureViewDescriptor::default()),
+                ),
+            }],
+        });
+        let t_id=egui::TextureId::User(self.next_user_texture_id);
+        self.user_textures.push(Some((texture_handle,bind_group)));
+        self.next_user_texture_id+=1;
+        t_id
+
+    }
+
     /// Creates a new render pass to render a egui UI. `output_format` needs to be either `wgpu::TextureFormat::Rgba8UnormSrgb` or `wgpu::TextureFormat::Bgra8UnormSrgb`. Panics if it's not a Srgb format.
     pub fn new(device: &wgpu::Device, output_format: wgpu::TextureFormat) -> Self {
         if !(output_format == wgpu::TextureFormat::Rgba8UnormSrgb
@@ -420,14 +443,14 @@ impl RenderPass {
         queue: &wgpu::Queue,
         egui_texture: &egui::Texture,
         label: &str,
-    ) -> (Texture, BindGroup) {
+    ) -> (Arc<Texture>, BindGroup) {
         let size = wgpu::Extent3d {
             width: egui_texture.width as u32,
             height: egui_texture.height as u32,
             depth: 1,
         };
 
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
+        let texture =Arc::new( device.create_texture(&wgpu::TextureDescriptor {
             label: Some(format!("{}_texture", label).as_str()),
             size,
             mip_level_count: 1,
@@ -435,7 +458,7 @@ impl RenderPass {
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8UnormSrgb,
             usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::COPY_DST,
-        });
+        }));
 
         queue.write_texture(
             wgpu::TextureCopyView {
