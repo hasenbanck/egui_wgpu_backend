@@ -444,7 +444,7 @@ impl RenderPass {
         texture: &wgpu::Texture,
     ) -> egui::TextureId {
 
-        // We have to bind it here, so that we don't add it as a pending texture.
+        //  Now we've bound it here, so that we don't add it as a pending texture.
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some(format!("{}_texture_bind_group", self.next_user_texture_id).as_str()),
             layout: &self.texture_bind_group_layout,
