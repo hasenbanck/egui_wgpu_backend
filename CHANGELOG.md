@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Updated
+- Target egui 0.9
+- Fix sRGB color font handling
+
+### Added
+- Added a function to use off-screen textures inside the egui UI.
 
 ## [0.4.0] - 2021-02-01
 ### Updated
