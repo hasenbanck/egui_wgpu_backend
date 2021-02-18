@@ -70,103 +70,6 @@ pub struct RenderPass {
 }
 
 impl RenderPass {
-    /// Assume wgpu::Texture as egui::TextureId.
-    /// i.e given wgpu::Texture (wgpu Texture handle) as egui::TextureId (egui texture handle) without more allocation.
-    /// this method usable for 3D drawing area.
-    /// We recommend use TextureFormat::Rgba8UnormSrgb
-    /// texture must have TextureUsage::SAMPLED
-    /**
-     ```
-    struct Renderer {
-        device: Arc<Device>,
-        queue: Arc<Queue>,
-        render_target: Box<Texture>,
-    }
-    impl Renderer {
-        pub fn init(size: Extent3d, device: Arc<Device>, queue: Arc<Queue>) -> Self {
-            let image = Box::new(device.create_texture(&TextureDescriptor {
-                label: Some("RendererVirtualSwapChain"),
-                size,
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: TextureDimension::D2,
-                format: sc_fmt,
-                usage: TextureUsage::RENDER_ATTACHMENT | TextureUsage::COPY_SRC | TextureUsage::SAMPLED,
-            }));
-            /* some initialization below*/
-            Self {
-                device: device.clone(),
-                queue: queue.clone(),
-                texture: image,
-            }
-        }
-        pub fn render(&mut self) {
-            //some operation
-        }
-        pub fn get_renderer_image_ref(&self) -> &Texture {
-            &self.image
-        }
-    }
-    const SCREEN_WIDTH: u32 = 640;
-    const SCREEN_HEIGHT: u32 = 480;
-    fn main() {
-        let renderer_size = Extent3d {
-            width: SCREEN_WIDTH,
-            height: SCREEN_HEIGHT,
-            depth: 1,
-        };
-        let renderer = Renderer::init(renderer_size, device.clone(), queue.clone());
-        egui_pass.texture_as_egui_texture_id(&device, &texture);
-        event_loop.run(move |event, _, control_flow| {
-            match event {
-                RedrawRequested(..) => {
-                    /*normal egui_wgpu_backend code*/
-                    /*call render before execute */
-                    egui::Window::new("RotateBox")
-                        .fixed_size(Vec2 {
-                            x: SCREEN_WIDTH as f32,
-                            y: SCREEN_HEIGHT as f32,
-                        })
-                        .show(&platform.context(), |ui| {
-                            ui.image(
-                                texture_id_for_rotate_box_screen,
-                                Vec2 {
-                                    x: SCREEN_WIDTH as f32,
-                                    y: SCREEN_HEIGHT as f32,
-                                },
-                            );
-                        });
-                    renderer.render();
-                    egui_pass.execute();
-                }
-                _ => *control_flow = ControlFlow::Poll,
-            }
-        });
-    }
-    ```
-    */
-    pub fn texture_as_egui_texture_id(
-        &mut self,
-        device: &wgpu::Device,
-        texture: &wgpu::Texture,
-    ) -> egui::TextureId {
-        //bind has been done so we do not add to pending
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some(format!("Outer created texture {}", self.next_user_texture_id).as_str()),
-            layout: &self.texture_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(
-                    &texture.create_view(&wgpu::TextureViewDescriptor::default()),
-                ),
-            }],
-        });
-        let t_id = egui::TextureId::User(self.next_user_texture_id);
-        self.user_textures.push(Some(bind_group));
-        self.next_user_texture_id += 1;
-        t_id
-    }
-
     /// Creates a new render pass to render a egui UI. `output_format` needs to be either `wgpu::TextureFormat::Rgba8UnormSrgb` or `wgpu::TextureFormat::Bgra8UnormSrgb`. Panics if it's not a Srgb format.
     pub fn new(device: &wgpu::Device, output_format: wgpu::TextureFormat) -> Self {
         if !(output_format == wgpu::TextureFormat::Rgba8UnormSrgb
@@ -527,6 +430,36 @@ impl RenderPass {
         });
 
         bind_group
+    }
+
+    /// Registers a `wgpu::Texture` with a `egui::TextureId`.
+    ///
+    /// This enables the application to reference
+    /// the texture inside an image ui element. This effectively enables off-screen rendering inside
+    /// the egui UI. Texture must have the texture format `TextureFormat::Rgba8UnormSrgb` and 
+    /// Texture usage `TextureUsage::SAMPLED`.
+    pub fn egui_texture_from_wgpu_texture(
+        &mut self,
+        device: &wgpu::Device,
+        texture: &wgpu::Texture,
+    ) -> egui::TextureId {
+
+        // We have to bind it here, so that we don't add it as a pending texture.
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(format!("{}_texture_bind_group", self.next_user_texture_id).as_str()),
+            layout: &self.texture_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(
+                    &texture.create_view(&wgpu::TextureViewDescriptor::default()),
+                ),
+            }],
+        });
+        let texture_id = egui::TextureId::User(self.next_user_texture_id);
+        self.user_textures.push(Some(bind_group));
+        self.next_user_texture_id += 1;
+
+        texture_id
     }
 
     /// Uploads the uniform, vertex and index data used by the render pass. Should be called before `execute()`.
