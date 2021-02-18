@@ -4,12 +4,10 @@
 //! A basic usage example can be found [here](https://github.com/hasenbanck/egui_example).
 #![warn(missing_docs)]
 
+use bytemuck::{Pod, Zeroable};
 pub use epi;
 pub use epi::egui;
 pub use wgpu;
-
-use bytemuck::{Pod, Zeroable};
-
 use wgpu::{include_spirv, util::DeviceExt, BindGroup};
 
 /// Enum for selecting the right buffer type.
@@ -77,71 +75,76 @@ impl RenderPass {
     /// this method usable for 3D drawing area.
     /// We recommend use TextureFormat::Rgba8UnormSrgb
     /// texture must have TextureUsage::SAMPLED
-    /// like below
-    /// ```
-    /// struct Renderer{
-    ///  device:Arc<Device>,
-    ///  queue:Arc<Queue>
-    ///  render_target:Box<Texture>,
-    /// }
-    ///  impl Renderer{
-    ///  pub fn init(size:Extent3d,device:Arc<Device>,queue:Arc<Queue>)->Self{
-    ///         let image =Box::new( device.create_texture(&TextureDescriptor {
-    ///            label: Some("RendererVirtualSwapChain"),
-    ///             size,
-    ///             mip_level_count: 1,
-    ///             sample_count: 1,
-    ///             dimension: TextureDimension::D2,
-    ///             format: sc_fmt,
-    ///             usage: TextureUsage::RENDER_ATTACHMENT | TextureUsage::COPY_SRC | TextureUsage::SAMPLED,
-    ///         }));
-    ///  /* some initialization below*/
-    ///  Self{
-    ///  device:device.clone(),
-    ///  queue:queue.clone(),
-    ///  texture:image
-    /// }
-    ///  }
-    /// pub fn render(&mut self){
-    ///  //some operation
-    /// }
-    /// pub fn get_renderer_image_ref(&self)->&Texture{
-    ///  &self.image
-    /// }
-    /// }
-    /// const SCREEN_WIDTH:u32=640;
-    /// const SCREEN_HEIGHT:u32=480;
-    /// fn main(){
-    ///  let renderer_size=Extent3d{width:SCREEN_WIDTH,height:SCREEN_HEIGHT,depth:1};
-    ///  let renderer=Renderer::init(renderer_size,device.clone(),queue.clone());
-    ///  egui_pass.texture_as_egui_texture_id(&device,&texture);
-    ///  event_loop.run(move |event,_,control_flow|{
-    ///  match event{
-    /// RedrawRequested(..)=>{
-    /// /*normal egui_wgpu_backend code*/
-    /// /*call render before execute */
-    ///                 egui::Window::new("RotateBox")
-    ///                     .fixed_size(Vec2 {
-    ///                         x: SCREEN_WIDTH as f32,
-    ///                         y: SCREEN_HEIGHT as f32,
-    ///                     })
-    ///                     .show(&platform.context(), |ui| {
-    ///                         ui.image(
-    ///                            texture_id_for_rotate_box_screen,
-    ///                             Vec2 {
-    ///                                 x: SCREEN_WIDTH as f32,
-    ///                                 y: SCREEN_HEIGHT as f32,
-    ///                             },
-    ///                         );
-    ///                     });
-    /// renderer.render();
-    /// egui_pass.execute();
-    /// }
-    ///_=>{*control_flow=ControlFlow::Poll}
-    /// }
-    /// });
-    /// }
-    /// ```
+    /**
+     ```
+    struct Renderer {
+        device: Arc<Device>,
+        queue: Arc<Queue>,
+        render_target: Box<Texture>,
+    }
+    impl Renderer {
+        pub fn init(size: Extent3d, device: Arc<Device>, queue: Arc<Queue>) -> Self {
+            let image = Box::new(device.create_texture(&TextureDescriptor {
+                label: Some("RendererVirtualSwapChain"),
+                size,
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: TextureDimension::D2,
+                format: sc_fmt,
+                usage: TextureUsage::RENDER_ATTACHMENT | TextureUsage::COPY_SRC | TextureUsage::SAMPLED,
+            }));
+            /* some initialization below*/
+            Self {
+                device: device.clone(),
+                queue: queue.clone(),
+                texture: image,
+            }
+        }
+        pub fn render(&mut self) {
+            //some operation
+        }
+        pub fn get_renderer_image_ref(&self) -> &Texture {
+            &self.image
+        }
+    }
+    const SCREEN_WIDTH: u32 = 640;
+    const SCREEN_HEIGHT: u32 = 480;
+    fn main() {
+        let renderer_size = Extent3d {
+            width: SCREEN_WIDTH,
+            height: SCREEN_HEIGHT,
+            depth: 1,
+        };
+        let renderer = Renderer::init(renderer_size, device.clone(), queue.clone());
+        egui_pass.texture_as_egui_texture_id(&device, &texture);
+        event_loop.run(move |event, _, control_flow| {
+            match event {
+                RedrawRequested(..) => {
+                    /*normal egui_wgpu_backend code*/
+                    /*call render before execute */
+                    egui::Window::new("RotateBox")
+                        .fixed_size(Vec2 {
+                            x: SCREEN_WIDTH as f32,
+                            y: SCREEN_HEIGHT as f32,
+                        })
+                        .show(&platform.context(), |ui| {
+                            ui.image(
+                                texture_id_for_rotate_box_screen,
+                                Vec2 {
+                                    x: SCREEN_WIDTH as f32,
+                                    y: SCREEN_HEIGHT as f32,
+                                },
+                            );
+                        });
+                    renderer.render();
+                    egui_pass.execute();
+                }
+                _ => *control_flow = ControlFlow::Poll,
+            }
+        });
+    }
+    ```
+    */
     pub fn texture_as_egui_texture_id(
         &mut self,
         device: &wgpu::Device,
