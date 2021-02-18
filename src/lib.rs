@@ -109,9 +109,38 @@ impl RenderPass {
     ///  &self.image
     /// }
     /// }
-    ///  let renderer_size=Extent3d{width:1280,height:720,depth:1};
+    /// const SCREEN_WIDTH:u32=640;
+    /// const SCREEN_HEIGHT:u32=480;
+    /// fn main(){
+    ///  let renderer_size=Extent3d{width:SCREEN_WIDTH,height:SCREEN_HEIGHT,depth:1};
     ///  let renderer=Renderer::init(renderer_size,device.clone(),queue.clone());
     ///  egui_pass.texture_as_egui_texture_id(&device,&texture);
+    ///  event_loop.run(move |event,_,control_flow|{
+    ///  match event{
+    /// RedrawRequested(..)=>{
+    /// /*normal egui_wgpu_backend code*/
+    /// /*call render before execute */
+    ///                 egui::Window::new("RotateBox")
+    ///                     .fixed_size(Vec2 {
+    ///                         x: SCREEN_WIDTH as f32,
+    ///                         y: SCREEN_HEIGHT as f32,
+    ///                     })
+    ///                     .show(&platform.context(), |ui| {
+    ///                         ui.image(
+    ///                            texture_id_for_rotate_box_screen,
+    ///                             Vec2 {
+    ///                                 x: SCREEN_WIDTH as f32,
+    ///                                 y: SCREEN_HEIGHT as f32,
+    ///                             },
+    ///                         );
+    ///                     });
+    /// renderer.render();
+    /// egui_pass.execute();
+    /// }
+    ///_=>{*control_flow=ControlFlow::Poll}
+    /// }
+    /// });
+    /// }
     /// ```
     pub fn texture_as_egui_texture_id(
         &mut self,
