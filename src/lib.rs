@@ -4,12 +4,11 @@
 //! A basic usage example can be found [here](https://github.com/hasenbanck/egui_example).
 #![warn(missing_docs)]
 
+use bytemuck::{Pod, Zeroable};
 pub use epi;
 pub use epi::egui;
 pub use wgpu;
-
-use bytemuck::{Pod, Zeroable};
-use wgpu::{include_spirv, util::DeviceExt};
+use wgpu::{include_spirv, util::DeviceExt, BindGroup};
 
 /// Enum for selecting the right buffer type.
 #[derive(Debug)]
@@ -324,11 +323,12 @@ impl RenderPass {
             egui::TextureId::User(id) => {
                 let id = id as usize;
                 assert!(id < self.user_textures.len());
-                self.user_textures
+                &(self
+                    .user_textures
                     .get(id)
                     .unwrap_or_else(|| panic!("user texture {} not found", id))
                     .as_ref()
-                    .unwrap_or_else(|| panic!("user texture {} freed", id))
+                    .unwrap_or_else(|| panic!("user texture {} freed", id)))
             }
         }
     }
@@ -386,7 +386,7 @@ impl RenderPass {
         queue: &wgpu::Queue,
         egui_texture: &egui::Texture,
         label: &str,
-    ) -> wgpu::BindGroup {
+    ) -> BindGroup {
         let size = wgpu::Extent3d {
             width: egui_texture.width as u32,
             height: egui_texture.height as u32,
@@ -430,6 +430,36 @@ impl RenderPass {
         });
 
         bind_group
+    }
+
+    /// Registers a `wgpu::Texture` with a `egui::TextureId`.
+    ///
+    /// This enables the application to reference
+    /// the texture inside an image ui element. This effectively enables off-screen rendering inside
+    /// the egui UI. Texture must have the texture format `TextureFormat::Rgba8UnormSrgb` and 
+    /// Texture usage `TextureUsage::SAMPLED`.
+    pub fn egui_texture_from_wgpu_texture(
+        &mut self,
+        device: &wgpu::Device,
+        texture: &wgpu::Texture,
+    ) -> egui::TextureId {
+
+        // We have to bind it here, so that we don't add it as a pending texture.
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(format!("{}_texture_bind_group", self.next_user_texture_id).as_str()),
+            layout: &self.texture_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(
+                    &texture.create_view(&wgpu::TextureViewDescriptor::default()),
+                ),
+            }],
+        });
+        let texture_id = egui::TextureId::User(self.next_user_texture_id);
+        self.user_textures.push(Some(bind_group));
+        self.next_user_texture_id += 1;
+
+        texture_id
     }
 
     /// Uploads the uniform, vertex and index data used by the render pass. Should be called before `execute()`.
