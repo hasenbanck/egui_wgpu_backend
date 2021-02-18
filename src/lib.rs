@@ -8,7 +8,7 @@ use bytemuck::{Pod, Zeroable};
 pub use epi;
 pub use epi::egui;
 pub use wgpu;
-use wgpu::{include_spirv, util::DeviceExt, BindGroup};
+use wgpu::{include_spirv, util::DeviceExt};
 
 /// Enum for selecting the right buffer type.
 #[derive(Debug)]
@@ -386,7 +386,7 @@ impl RenderPass {
         queue: &wgpu::Queue,
         egui_texture: &egui::Texture,
         label: &str,
-    ) -> BindGroup {
+    ) -> wgpu::BindGroup {
         let size = wgpu::Extent3d {
             width: egui_texture.width as u32,
             height: egui_texture.height as u32,
@@ -444,7 +444,7 @@ impl RenderPass {
         texture: &wgpu::Texture,
     ) -> egui::TextureId {
 
-        //  Now we've bound it here, so that we don't add it as a pending texture.
+        // We have to bind it here, so that we don't add it as a pending texture.
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some(format!("{}_texture_bind_group", self.next_user_texture_id).as_str()),
             layout: &self.texture_bind_group_layout,
