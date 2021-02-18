@@ -10,9 +10,7 @@ pub use wgpu;
 
 use bytemuck::{Pod, Zeroable};
 
-use wgpu::{
-    include_spirv, util::DeviceExt, BindGroup, CommandEncoderDescriptor, Texture, TextureCopyView,
-};
+use wgpu::{include_spirv, util::DeviceExt, BindGroup};
 
 /// Enum for selecting the right buffer type.
 #[derive(Debug)]
@@ -74,22 +72,60 @@ pub struct RenderPass {
 }
 
 impl RenderPass {
-    /// Assume wgpu::Texture as egui::TextureId
-    ///  i.e given wgpu::Texture (wgpu Texture handle) as egui::TextureId (egui texture handle) without more allocation
-    ///  this method usable for 3D drawing area
+    /// Assume wgpu::Texture as egui::TextureId.
+    /// i.e given wgpu::Texture (wgpu Texture handle) as egui::TextureId (egui texture handle) without more allocation.
+    /// this method usable for 3D drawing area.
+    /// We recommend use TextureFormat::Rgba8UnormSrgb
+    /// texture must have TextureUsage::SAMPLED
+    /// like below
+    /// ```
+    /// struct Renderer{
+    ///  device:Arc<Device>,
+    ///  queue:Arc<Queue>
+    ///  render_target:Box<Texture>,
+    /// }
+    ///  impl Renderer{
+    ///  pub fn init(size:Extent3d,device:Arc<Device>,queue:Arc<Queue>)->Self{
+    ///         let image =Box::new( device.create_texture(&TextureDescriptor {
+    ///            label: Some("RendererVirtualSwapChain"),
+    ///             size,
+    ///             mip_level_count: 1,
+    ///             sample_count: 1,
+    ///             dimension: TextureDimension::D2,
+    ///             format: sc_fmt,
+    ///             usage: TextureUsage::RENDER_ATTACHMENT | TextureUsage::COPY_SRC | TextureUsage::SAMPLED,
+    ///         }));
+    ///  /* some initialization below*/
+    ///  Self{
+    ///  device:device.clone(),
+    ///  queue:queue.clone(),
+    ///  texture:image
+    /// }
+    ///  }
+    /// pub fn render(&mut self){
+    ///  //some operation
+    /// }
+    /// pub fn get_renderer_image_ref(&self)->&Texture{
+    ///  &self.image
+    /// }
+    /// }
+    ///  let renderer_size=Extent3d{width:1280,height:720,depth:1};
+    ///  let renderer=Renderer::init(renderer_size,device.clone(),queue.clone());
+    ///  egui_pass.texture_as_egui_texture_id(&device,&texture);
+    /// ```
     pub fn texture_as_egui_texture_id(
         &mut self,
         device: &wgpu::Device,
-        texture_handle: &wgpu::Texture,
+        texture: &wgpu::Texture,
     ) -> egui::TextureId {
         //bind has been done so we do not add to pending
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some(format!("user_{}_texture_bind_group", self.next_user_texture_id).as_str()),
+            label: Some(format!("Outer created texture {}", self.next_user_texture_id).as_str()),
             layout: &self.texture_bind_group_layout,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
                 resource: wgpu::BindingResource::TextureView(
-                    &texture_handle.create_view(&wgpu::TextureViewDescriptor::default()),
+                    &texture.create_view(&wgpu::TextureViewDescriptor::default()),
                 ),
             }],
         });
@@ -357,8 +393,7 @@ impl RenderPass {
                     .get(id)
                     .unwrap_or_else(|| panic!("user texture {} not found", id))
                     .as_ref()
-                    .unwrap_or_else(|| panic!("user texture {} freed", id))
-                    )
+                    .unwrap_or_else(|| panic!("user texture {} freed", id)))
             }
         }
     }
