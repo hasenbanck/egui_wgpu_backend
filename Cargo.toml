@@ -10,6 +10,6 @@ license = "MIT OR Apache-2.0"
 readme = "README.md"
 
 [dependencies]
-epi = "0.9.0"
+epi = "0.10.0"
 wgpu = "0.7"
 bytemuck = "1.5.0"
