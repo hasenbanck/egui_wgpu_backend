@@ -70,15 +70,14 @@ pub struct RenderPass {
 }
 
 impl RenderPass {
-    /// Creates a new render pass to render a egui UI. `output_format` needs to be either `wgpu::TextureFormat::Rgba8UnormSrgb` or `wgpu::TextureFormat::Bgra8UnormSrgb`. Panics if it's not a Srgb format.
+    /// Creates a new render pass to render a egui UI.
     pub fn new(device: &wgpu::Device, output_format: wgpu::TextureFormat) -> Self {
-        if !(output_format == wgpu::TextureFormat::Rgba8UnormSrgb
-            || output_format == wgpu::TextureFormat::Bgra8UnormSrgb)
-        {
-            panic!("Incompatible output_format. Needs to be either Rgba8UnormSrgb or Bgra8UnormSrgb: {:?}", output_format);
-        }
+        #[cfg(not(target_arch = "wasm32"))]
+            let vs_module = device.create_shader_module(&include_spirv!("shader/egui.vert.spirv"));
 
-        let vs_module = device.create_shader_module(&include_spirv!("shader/egui.vert.spirv"));
+        #[cfg(target_arch = "wasm32")]
+            let vs_module = device.create_shader_module(&include_spirv!("shader/egui-web.vert.spirv"));
+
         let fs_module = device.create_shader_module(&include_spirv!("shader/egui.frag.spirv"));
 
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {

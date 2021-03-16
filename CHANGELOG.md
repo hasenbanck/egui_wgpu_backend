@@ -6,8 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Updated
-- Target egui 0.9
-- Fix sRGB color font handling
+- Target egui 0.10
+- Fix sRGB color font handling (web + native)
 
 ### Added
 - Added a function to use off-screen textures inside the egui UI.
