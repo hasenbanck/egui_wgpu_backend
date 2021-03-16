@@ -185,7 +185,7 @@ impl RenderPass {
                 cull_mode: wgpu::CullMode::default(),
                 front_face: wgpu::FrontFace::default(),
                 polygon_mode: wgpu::PolygonMode::default(),
-                strip_index_format: Some(wgpu::IndexFormat::Uint32),
+                strip_index_format: None,
             },
             depth_stencil: None,
             multisample: wgpu::MultisampleState {
@@ -435,7 +435,7 @@ impl RenderPass {
     ///
     /// This enables the application to reference
     /// the texture inside an image ui element. This effectively enables off-screen rendering inside
-    /// the egui UI. Texture must have the texture format `TextureFormat::Rgba8UnormSrgb` and 
+    /// the egui UI. Texture must have the texture format `TextureFormat::Rgba8UnormSrgb` and
     /// Texture usage `TextureUsage::SAMPLED`.
     pub fn egui_texture_from_wgpu_texture(
         &mut self,
