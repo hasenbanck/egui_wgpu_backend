@@ -72,11 +72,11 @@ pub struct RenderPass {
 impl RenderPass {
     /// Creates a new render pass to render a egui UI.
     pub fn new(device: &wgpu::Device, output_format: wgpu::TextureFormat) -> Self {
-        #[cfg(not(target_arch = "wasm32"))]
-            let vs_module = device.create_shader_module(&include_spirv!("shader/egui.vert.spirv"));
+        #[cfg(not(feature = "web"))]
+        let vs_module = device.create_shader_module(&include_spirv!("shader/egui.vert.spirv"));
 
-        #[cfg(target_arch = "wasm32")]
-            let vs_module = device.create_shader_module(&include_spirv!("shader/egui-web.vert.spirv"));
+        #[cfg(feature = "web")]
+        let vs_module = device.create_shader_module(&include_spirv!("shader/egui-web.vert.spirv"));
 
         let fs_module = device.create_shader_module(&include_spirv!("shader/egui.frag.spirv"));
 
