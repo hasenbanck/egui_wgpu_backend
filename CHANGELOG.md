@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Updated
+
+## [0.5.0] - 2021-03-16
+### Updated
 - Target egui 0.10
 - Fix sRGB color font handling (web + native)
 
