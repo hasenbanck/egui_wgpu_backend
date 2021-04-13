@@ -276,10 +276,10 @@ impl RenderPass {
             let clip_max_y = scale_factor * clip_rect.max.y;
 
             // Make sure clip rect can fit within an `u32`.
-            let clip_min_x = egui::clamp(clip_min_x, 0.0..=physical_width as f32);
-            let clip_min_y = egui::clamp(clip_min_y, 0.0..=physical_height as f32);
-            let clip_max_x = egui::clamp(clip_max_x, clip_min_x..=physical_width as f32);
-            let clip_max_y = egui::clamp(clip_max_y, clip_min_y..=physical_height as f32);
+            let clip_min_x = clip_min_x.clamp(0.0, physical_width as f32);
+            let clip_min_y = clip_min_y.clamp(0.0, physical_height as f32);
+            let clip_max_x = clip_max_x.clamp(clip_min_x, physical_width as f32);
+            let clip_max_y = clip_max_y.clamp(clip_min_y, physical_height as f32);
 
             let clip_min_x = clip_min_x.round() as u32;
             let clip_min_y = clip_min_y.round() as u32;
@@ -442,7 +442,6 @@ impl RenderPass {
         device: &wgpu::Device,
         texture: &wgpu::Texture,
     ) -> egui::TextureId {
-
         // We've bound it here, so that we don't add it as a pending texture.
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some(format!("{}_texture_bind_group", self.next_user_texture_id).as_str()),
