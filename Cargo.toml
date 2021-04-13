@@ -14,6 +14,6 @@ default = []
 web = []
 
 [dependencies]
-epi = "0.10.0"
+epi = "0.11"
 wgpu = "0.7"
-bytemuck = "1.5.0"
+bytemuck = "1.5"
