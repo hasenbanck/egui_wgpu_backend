@@ -7,6 +7,7 @@
 use bytemuck::{Pod, Zeroable};
 pub use epi;
 pub use epi::egui;
+use std::num::NonZeroU32;
 pub use wgpu;
 use wgpu::{include_spirv, util::DeviceExt};
 
@@ -131,11 +132,11 @@ impl RenderPass {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::Buffer {
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                         buffer: &uniform_buffer.buffer,
                         offset: 0,
                         size: None,
-                    },
+                    }),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
@@ -177,12 +178,14 @@ impl RenderPass {
                     // 0: vec2 position
                     // 1: vec2 texture coordinates
                     // 2: uint color
-                    attributes: &wgpu::vertex_attr_array![0 => Float2, 1 => Float2, 2 => Uint],
+                    attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2, 2 => Uint32],
                 }],
             },
             primitive: wgpu::PrimitiveState {
                 topology: wgpu::PrimitiveTopology::TriangleList,
-                cull_mode: wgpu::CullMode::default(),
+                clamp_depth: false,
+                conservative: false,
+                cull_mode: None,
                 front_face: wgpu::FrontFace::default(),
                 polygon_mode: wgpu::PolygonMode::default(),
                 strip_index_format: None,
@@ -193,21 +196,24 @@ impl RenderPass {
                 count: 1,
                 mask: !0,
             },
+
             fragment: Some(wgpu::FragmentState {
                 module: &fs_module,
                 entry_point: "main",
                 targets: &[wgpu::ColorTargetState {
                     format: output_format,
-                    color_blend: wgpu::BlendState {
-                        src_factor: wgpu::BlendFactor::One,
-                        dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-                        operation: wgpu::BlendOperation::Add,
-                    },
-                    alpha_blend: wgpu::BlendState {
-                        src_factor: wgpu::BlendFactor::OneMinusDstAlpha,
-                        dst_factor: wgpu::BlendFactor::One,
-                        operation: wgpu::BlendOperation::Add,
-                    },
+                    blend: Some(wgpu::BlendState {
+                        color: wgpu::BlendComponent {
+                            src_factor: wgpu::BlendFactor::One,
+                            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                            operation: wgpu::BlendOperation::Add,
+                        },
+                        alpha: wgpu::BlendComponent {
+                            src_factor: wgpu::BlendFactor::OneMinusDstAlpha,
+                            dst_factor: wgpu::BlendFactor::One,
+                            operation: wgpu::BlendOperation::Add,
+                        },
+                    }),
                     write_mask: wgpu::ColorWrite::ALL,
                 }],
             }),
@@ -244,8 +250,8 @@ impl RenderPass {
         };
 
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
-                attachment: color_attachment,
+            color_attachments: &[wgpu::RenderPassColorAttachment {
+                view: color_attachment,
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: load_operation,
@@ -389,7 +395,7 @@ impl RenderPass {
         let size = wgpu::Extent3d {
             width: egui_texture.width as u32,
             height: egui_texture.height as u32,
-            depth: 1,
+            depth_or_array_layers: 1,
         };
 
         let texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -403,16 +409,18 @@ impl RenderPass {
         });
 
         queue.write_texture(
-            wgpu::TextureCopyView {
+            wgpu::ImageCopyTexture {
                 texture: &texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
             egui_texture.pixels.as_slice(),
-            wgpu::TextureDataLayout {
+            wgpu::ImageDataLayout {
                 offset: 0,
-                bytes_per_row: (egui_texture.pixels.len() / egui_texture.height) as u32,
-                rows_per_image: egui_texture.height as u32,
+                bytes_per_row: NonZeroU32::new(
+                    (egui_texture.pixels.len() / egui_texture.height) as u32,
+                ),
+                rows_per_image: NonZeroU32::new(egui_texture.height as u32),
             },
             size,
         );
