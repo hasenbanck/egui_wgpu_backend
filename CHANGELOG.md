@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Updated
+
+## [0.7.0] - 2021-05-01
+### Updated
 - Target wgpu 0.8
 
 ## [0.6.0] - 2021-04-13
