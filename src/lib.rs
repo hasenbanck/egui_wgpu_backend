@@ -72,7 +72,7 @@ pub struct RenderPass {
 
 impl RenderPass {
     /// Creates a new render pass to render a egui UI.
-    pub fn new(device: &wgpu::Device, output_format: wgpu::TextureFormat) -> Self {
+    pub fn new(device: &wgpu::Device, output_format: wgpu::TextureFormat, msaa_samples: u32) -> Self {
         #[cfg(not(feature = "web"))]
         let vs_module = device.create_shader_module(&include_spirv!("shader/egui.vert.spirv"));
 
@@ -193,7 +193,7 @@ impl RenderPass {
             depth_stencil: None,
             multisample: wgpu::MultisampleState {
                 alpha_to_coverage_enabled: false,
-                count: 1,
+                count: msaa_samples,
                 mask: !0,
             },
 
