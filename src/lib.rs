@@ -72,7 +72,11 @@ pub struct RenderPass {
 
 impl RenderPass {
     /// Creates a new render pass to render a egui UI.
-    pub fn new(device: &wgpu::Device, output_format: wgpu::TextureFormat, msaa_samples: u32) -> Self {
+    pub fn new(
+        device: &wgpu::Device,
+        output_format: wgpu::TextureFormat,
+        msaa_samples: u32,
+    ) -> Self {
         #[cfg(not(feature = "web"))]
         let vs_module = device.create_shader_module(&include_spirv!("shader/egui.vert.spirv"));
 
@@ -93,24 +97,45 @@ impl RenderPass {
             size: std::mem::size_of::<UniformBuffer>(),
         };
 
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("egui_texture_sampler"),
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            ..Default::default()
-        });
-
         let uniform_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("egui_uniform_bind_group_layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStage::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                        ty: wgpu::BufferBindingType::Uniform,
+                    },
+                    count: None,
+                }],
+            });
+
+        let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("egui_uniform_bind_group"),
+            layout: &uniform_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: &uniform_buffer.buffer,
+                    offset: 0,
+                    size: None,
+                }),
+            }],
+        });
+
+        let texture_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("egui_texture_bind_group_layout"),
                 entries: &[
                     wgpu::BindGroupLayoutEntry {
                         binding: 0,
-                        visibility: wgpu::ShaderStage::VERTEX,
-                        ty: wgpu::BindingType::Buffer {
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                            ty: wgpu::BufferBindingType::Uniform,
+                        visibility: wgpu::ShaderStage::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
                         },
                         count: None,
                     },
@@ -124,40 +149,6 @@ impl RenderPass {
                         count: None,
                     },
                 ],
-            });
-
-        let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("egui_uniform_bind_group"),
-            layout: &uniform_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                        buffer: &uniform_buffer.buffer,
-                        offset: 0,
-                        size: None,
-                    }),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
-            ],
-        });
-
-        let texture_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("egui_texture_bind_group_layout"),
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStage::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        multisampled: false,
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                    },
-                    count: None,
-                }],
             });
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -425,15 +416,28 @@ impl RenderPass {
             size,
         );
 
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some(format!("{}_texture_sampler", label).as_str()),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some(format!("{}_texture_bind_group", label).as_str()),
             layout: &self.texture_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(
-                    &texture.create_view(&wgpu::TextureViewDescriptor::default()),
-                ),
-            }],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(
+                        &texture.create_view(&wgpu::TextureViewDescriptor::default()),
+                    ),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+            ],
         });
 
         bind_group
@@ -445,21 +449,38 @@ impl RenderPass {
     /// the texture inside an image ui element. This effectively enables off-screen rendering inside
     /// the egui UI. Texture must have the texture format `TextureFormat::Rgba8UnormSrgb` and
     /// Texture usage `TextureUsage::SAMPLED`.
+    ///
+    /// If not specified, the default `texture_filter` used is `wgpu::FilterMode::Linear`.
     pub fn egui_texture_from_wgpu_texture(
         &mut self,
         device: &wgpu::Device,
         texture: &wgpu::Texture,
+        texture_filter: Option<wgpu::FilterMode>,
     ) -> egui::TextureId {
+        let texture_filter = texture_filter.unwrap_or(wgpu::FilterMode::Linear);
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some(format!("{}_texture_sampler", self.next_user_texture_id).as_str()),
+            mag_filter: texture_filter,
+            min_filter: texture_filter,
+            ..Default::default()
+        });
+
         // We've bound it here, so that we don't add it as a pending texture.
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some(format!("{}_texture_bind_group", self.next_user_texture_id).as_str()),
             layout: &self.texture_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(
-                    &texture.create_view(&wgpu::TextureViewDescriptor::default()),
-                ),
-            }],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(
+                        &texture.create_view(&wgpu::TextureViewDescriptor::default()),
+                    ),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+            ],
         });
         let texture_id = egui::TextureId::User(self.next_user_texture_id);
         self.user_textures.push(Some(bind_group));
