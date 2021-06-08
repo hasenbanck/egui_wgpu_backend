@@ -449,15 +449,12 @@ impl RenderPass {
     /// the texture inside an image ui element. This effectively enables off-screen rendering inside
     /// the egui UI. Texture must have the texture format `TextureFormat::Rgba8UnormSrgb` and
     /// Texture usage `TextureUsage::SAMPLED`.
-    ///
-    /// If not specified, the default `texture_filter` used is `wgpu::FilterMode::Linear`.
     pub fn egui_texture_from_wgpu_texture(
         &mut self,
         device: &wgpu::Device,
         texture: &wgpu::Texture,
-        texture_filter: Option<wgpu::FilterMode>,
+        texture_filter: wgpu::FilterMode,
     ) -> egui::TextureId {
-        let texture_filter = texture_filter.unwrap_or(wgpu::FilterMode::Linear);
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some(format!("{}_texture_sampler", self.next_user_texture_id).as_str()),
             mag_filter: texture_filter,
