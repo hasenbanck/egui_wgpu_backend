@@ -7,9 +7,10 @@
 use bytemuck::{Pod, Zeroable};
 pub use epi;
 pub use epi::egui;
+use std::borrow::Cow;
 use std::num::NonZeroU32;
 pub use wgpu;
-use wgpu::{include_spirv, util::DeviceExt};
+use wgpu::util::DeviceExt;
 
 /// Enum for selecting the right buffer type.
 #[derive(Debug)]
@@ -77,13 +78,12 @@ impl RenderPass {
         output_format: wgpu::TextureFormat,
         msaa_samples: u32,
     ) -> Self {
-        #[cfg(not(feature = "web"))]
-        let vs_module = device.create_shader_module(&include_spirv!("shader/egui.vert.spirv"));
-
-        #[cfg(feature = "web")]
-        let vs_module = device.create_shader_module(&include_spirv!("shader/egui-web.vert.spirv"));
-
-        let fs_module = device.create_shader_module(&include_spirv!("shader/egui.frag.spirv"));
+        let shader = wgpu::ShaderModuleDescriptor {
+            label: Some("egui_shader"),
+            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("shader/egui.wgsl"))),
+            flags: wgpu::ShaderFlags::VALIDATION,
+        };
+        let module = device.create_shader_module(&shader);
 
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("egui_uniform_buffer"),
@@ -161,8 +161,12 @@ impl RenderPass {
             label: Some("egui_pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
-                entry_point: "main",
-                module: &vs_module,
+                entry_point: if cfg!(feature = "web") {
+                    "vs_web_main"
+                } else {
+                    "vs_main"
+                },
+                module: &module,
                 buffers: &[wgpu::VertexBufferLayout {
                     array_stride: 5 * 4,
                     step_mode: wgpu::InputStepMode::Vertex,
@@ -189,8 +193,8 @@ impl RenderPass {
             },
 
             fragment: Some(wgpu::FragmentState {
-                module: &fs_module,
-                entry_point: "main",
+                module: &module,
+                entry_point: "fs_main",
                 targets: &[wgpu::ColorTargetState {
                     format: output_format,
                     blend: Some(wgpu::BlendState {
