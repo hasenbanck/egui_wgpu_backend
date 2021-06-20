@@ -15,5 +15,5 @@ web = []
 
 [dependencies]
 epi = "0.12"
-wgpu = "0.8"
+wgpu = "0.9"
 bytemuck = "1.5"
