@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Updated
 
+## [0.9.0] - 2021-06-20
+### Updated
+- Target wgpu 0.9
+- Port shaders to WGSL.
+- Add sample count to RenderPass.
+- Allow setting the texture filter mode for user textures.
+
 ## [0.8.0] - 2021-05-11
 ### Updated
 - Target egui 0.12
