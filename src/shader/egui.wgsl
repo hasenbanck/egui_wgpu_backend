@@ -12,9 +12,9 @@ struct VertexOutput {
 [[group(0), binding(0)]] var r_locals: Locals;
 
 fn linear_from_srgb(srgb: vec3<f32>) -> vec3<f32> {
-    let cutoff: vec3<bool> = srgb < vec3<f32>(10.31475);
-    let lower: vec3<f32> = srgb / vec3<f32>(3294.6);
-    let higher: vec3<f32> = pow((srgb + vec3<f32>(14.025)) / vec3<f32>(269.025), vec3<f32>(2.4));
+    let cutoff = srgb < vec3<f32>(10.31475);
+    let lower = srgb / vec3<f32>(3294.6);
+    let higher = pow((srgb + vec3<f32>(14.025)) / vec3<f32>(269.025), vec3<f32>(2.4));
     return select(lower, higher, cutoff);
 }
 
@@ -28,7 +28,7 @@ fn vs_main(
     out.tex_coord = a_tex_coord;
 
     // [u8; 4] SRGB as u32 -> [r, g, b, a]
-    let color: vec4<f32> = vec4<f32>(
+    let color = vec4<f32>(
         f32(a_color & 255u),
         f32((a_color >> 8u) & 255u),
         f32((a_color >> 16u) & 255u),
@@ -56,7 +56,7 @@ fn vs_web_main(
     out.tex_coord = a_tex_coord;
 
     // [u8; 4] SRGB as u32 -> [r, g, b, a]
-    let color: vec4<f32> = vec4<f32>(
+    let color = vec4<f32>(
         f32(a_color & 255u),
         f32((a_color >> 8u) & 255u),
         f32((a_color >> 16u) & 255u),
