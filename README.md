@@ -5,7 +5,7 @@
 ![MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Apache](https://img.shields.io/badge/license-Apache-blue.svg)
 
-Backend code to run egui using wgpu.
+Backend code to run [egui](https://github.com/emilk/egui) using [wgpu](https://wgpu.rs/).
 
 ## Features
 
