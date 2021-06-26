@@ -6,7 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Updated
+
+## [0.10.0] - 2021-06-26
+### Updated
 - Target egui 0.13
+- Update bytemuck dependency.
 
 ## [0.9.0] - 2021-06-20
 ### Updated
