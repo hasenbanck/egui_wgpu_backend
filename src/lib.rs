@@ -490,6 +490,53 @@ impl RenderPass {
         texture_id
     }
 
+    /// Registers a `wgpu::Texture` with an existing `egui::TextureId`.
+    ///
+    /// This enables applications to reuse `TextureId`s
+    pub fn update_egui_texture_from_wgpu_texture(
+        &mut self,
+        device: &wgpu::Device,
+        texture: &wgpu::Texture,
+        texture_filter: wgpu::FilterMode,
+        id: egui::TextureId,
+    ) {
+        let id = match id {
+            egui::TextureId::User(id) => id,
+            _ => panic!("expected user texture id"),
+        };
+
+        let user_texture = self
+            .user_textures
+            .get_mut(id as usize)
+            .unwrap_or_else(|| panic!("user texture {} not found", id));
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some(format!("{}_texture_sampler", self.next_user_texture_id).as_str()),
+            mag_filter: texture_filter,
+            min_filter: texture_filter,
+            ..Default::default()
+        });
+
+        // We've bound it here, so that we don't add it as a pending texture.
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(format!("{}_texture_bind_group", self.next_user_texture_id).as_str()),
+            layout: &self.texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(
+                        &texture.create_view(&wgpu::TextureViewDescriptor::default()),
+                    ),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+            ],
+        });
+
+        *user_texture = Some(bind_group);
+    }
+
     /// Uploads the uniform, vertex and index data used by the render pass. Should be called before `execute()`.
     pub fn update_buffers(
         &mut self,
