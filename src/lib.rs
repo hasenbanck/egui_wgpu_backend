@@ -4,13 +4,44 @@
 //! A basic usage example can be found [here](https://github.com/hasenbanck/egui_example).
 #![warn(missing_docs)]
 
+use std::fmt::Formatter;
+use std::{borrow::Cow, num::NonZeroU32};
+
 use bytemuck::{Pod, Zeroable};
-pub use epi;
-pub use epi::egui;
-use std::borrow::Cow;
-use std::num::NonZeroU32;
 pub use wgpu;
 use wgpu::util::DeviceExt;
+
+pub use {epi, epi::egui};
+
+/// Error that the backend can return.
+#[derive(Debug)]
+pub enum BackendError {
+    /// The given `egui::TextureId` was invalid.
+    InvalidTextureId(String),
+    /// Internal implementation error.
+    Internal(String),
+}
+
+impl std::fmt::Display for BackendError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BackendError::InvalidTextureId(msg) => {
+                write!(f, "invalid TextureId: `{:?}`", msg)
+            }
+            BackendError::Internal(msg) => {
+                write!(f, "internal error: `{:?}`", msg)
+            }
+        }
+    }
+}
+
+impl std::error::Error for BackendError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match *self {
+            _ => None,
+        }
+    }
+}
 
 /// Enum for selecting the right buffer type.
 #[derive(Debug)]
@@ -237,7 +268,7 @@ impl RenderPass {
         paint_jobs: &[egui::paint::ClippedMesh],
         screen_descriptor: &ScreenDescriptor,
         clear_color: Option<wgpu::Color>,
-    ) {
+    ) -> Result<(), BackendError> {
         let load_operation = if let Some(color) = clear_color {
             wgpu::LoadOp::Clear(color)
         } else {
@@ -291,20 +322,21 @@ impl RenderPass {
             let height = (clip_max_y - clip_min_y).max(1);
 
             {
-                // clip scissor rectangle to target size
+                // Clip scissor rectangle to target size.
                 let x = clip_min_x.min(physical_width);
                 let y = clip_min_y.min(physical_height);
                 let width = width.min(physical_width - x);
                 let height = height.min(physical_height - y);
 
-                // skip rendering with zero-sized clip areas
+                // Skip rendering with zero-sized clip areas.
                 if width == 0 || height == 0 {
                     continue;
                 }
 
                 pass.set_scissor_rect(x, y, width, height);
             }
-            pass.set_bind_group(1, self.get_texture_bind_group(mesh.texture_id), &[]);
+            let bind_group = self.get_texture_bind_group(mesh.texture_id)?;
+            pass.set_bind_group(1, bind_group, &[]);
 
             pass.set_index_buffer(index_buffer.buffer.slice(..), wgpu::IndexFormat::Uint32);
             pass.set_vertex_buffer(0, vertex_buffer.buffer.slice(..));
@@ -312,25 +344,33 @@ impl RenderPass {
         }
 
         pass.pop_debug_group();
+
+        Ok(())
     }
 
-    fn get_texture_bind_group(&self, texture_id: egui::TextureId) -> &wgpu::BindGroup {
-        match texture_id {
-            egui::TextureId::Egui => self
-                .texture_bind_group
-                .as_ref()
-                .expect("egui texture was not set before the first draw"),
+    fn get_texture_bind_group(
+        &self,
+        texture_id: egui::TextureId,
+    ) -> Result<&wgpu::BindGroup, BackendError> {
+        let bind_group = match texture_id {
+            egui::TextureId::Egui => self.texture_bind_group.as_ref().ok_or_else(|| {
+                BackendError::Internal("egui texture was not set before the first draw".to_string())
+            })?,
             egui::TextureId::User(id) => {
                 let id = id as usize;
                 assert!(id < self.user_textures.len());
                 &(self
                     .user_textures
                     .get(id)
-                    .unwrap_or_else(|| panic!("user texture {} not found", id))
+                    .ok_or_else(|| {
+                        BackendError::Internal(format!("user texture {} not found", id))
+                    })?
                     .as_ref()
-                    .unwrap_or_else(|| panic!("user texture {} freed", id)))
+                    .ok_or_else(|| BackendError::Internal(format!("user texture {} freed", id))))?
             }
-        }
+        };
+
+        Ok(bind_group)
     }
 
     /// Updates the texture used by egui for the fonts etc. Should be called before `execute()`.
@@ -378,8 +418,8 @@ impl RenderPass {
         }
     }
 
-    // Assumes egui_texture contains srgb data.
-    // This does not match how egui::Texture is documented as of writing, but this is how it is used for user textures.
+    /// Assumes egui_texture contains srgb data.
+    /// This does not match how `egui::Texture` is documented as of writing, but this is how it is used for user textures.
     fn egui_texture_to_wgpu(
         &self,
         device: &wgpu::Device,
@@ -449,9 +489,9 @@ impl RenderPass {
 
     /// Registers a `wgpu::Texture` with a `egui::TextureId`.
     ///
-    /// This enables the application to reference
-    /// the texture inside an image ui element. This effectively enables off-screen rendering inside
-    /// the egui UI. Texture must have the texture format `TextureFormat::Rgba8UnormSrgb` and
+    /// This enables the application to reference the texture inside an image ui element.
+    /// This effectively enables off-screen rendering inside the egui UI. Texture must have
+    /// the texture format `TextureFormat::Rgba8UnormSrgb` and
     /// Texture usage `TextureUsage::SAMPLED`.
     pub fn egui_texture_from_wgpu_texture(
         &mut self,
@@ -492,23 +532,30 @@ impl RenderPass {
 
     /// Registers a `wgpu::Texture` with an existing `egui::TextureId`.
     ///
-    /// This enables applications to reuse `TextureId`s
+    /// This enables applications to reuse `TextureId`s.
     pub fn update_egui_texture_from_wgpu_texture(
         &mut self,
         device: &wgpu::Device,
         texture: &wgpu::Texture,
         texture_filter: wgpu::FilterMode,
         id: egui::TextureId,
-    ) {
+    ) -> Result<(), BackendError> {
         let id = match id {
             egui::TextureId::User(id) => id,
-            _ => panic!("expected user texture id"),
+            _ => {
+                return Err(BackendError::InvalidTextureId(
+                    "ID was not of type `TextureId::User`".to_string(),
+                ));
+            }
         };
 
-        let user_texture = self
-            .user_textures
-            .get_mut(id as usize)
-            .unwrap_or_else(|| panic!("user texture {} not found", id));
+        let user_texture = self.user_textures.get_mut(id as usize).ok_or_else(|| {
+            BackendError::InvalidTextureId(format!(
+                "user texture for TextureId {} could not be found",
+                id
+            ))
+        })?;
+
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some(format!("{}_texture_sampler", self.next_user_texture_id).as_str()),
             mag_filter: texture_filter,
@@ -535,9 +582,12 @@ impl RenderPass {
         });
 
         *user_texture = Some(bind_group);
+
+        Ok(())
     }
 
-    /// Uploads the uniform, vertex and index data used by the render pass. Should be called before `execute()`.
+    /// Uploads the uniform, vertex and index data used by the render pass.
+    /// Should be called before `execute()`.
     pub fn update_buffers(
         &mut self,
         device: &wgpu::Device,
