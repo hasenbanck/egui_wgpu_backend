@@ -112,7 +112,6 @@ impl RenderPass {
         let shader = wgpu::ShaderModuleDescriptor {
             label: Some("egui_shader"),
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("shader/egui.wgsl"))),
-            flags: wgpu::ShaderFlags::VALIDATION,
         };
         let module = device.create_shader_module(&shader);
 
@@ -121,7 +120,7 @@ impl RenderPass {
             contents: bytemuck::cast_slice(&[UniformBuffer {
                 screen_size: [0.0, 0.0],
             }]),
-            usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
         let uniform_buffer = SizedBuffer {
             buffer: uniform_buffer,
@@ -133,7 +132,7 @@ impl RenderPass {
                 label: Some("egui_uniform_bind_group_layout"),
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStage::VERTEX,
+                    visibility: wgpu::ShaderStages::VERTEX,
                     ty: wgpu::BindingType::Buffer {
                         has_dynamic_offset: false,
                         min_binding_size: None,
@@ -162,7 +161,7 @@ impl RenderPass {
                 entries: &[
                     wgpu::BindGroupLayoutEntry {
                         binding: 0,
-                        visibility: wgpu::ShaderStage::FRAGMENT,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Texture {
                             multisampled: false,
                             sample_type: wgpu::TextureSampleType::Float { filterable: true },
@@ -172,7 +171,7 @@ impl RenderPass {
                     },
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,
-                        visibility: wgpu::ShaderStage::FRAGMENT,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Sampler {
                             filtering: true,
                             comparison: false,
@@ -200,7 +199,7 @@ impl RenderPass {
                 module: &module,
                 buffers: &[wgpu::VertexBufferLayout {
                     array_stride: 5 * 4,
-                    step_mode: wgpu::InputStepMode::Vertex,
+                    step_mode: wgpu::VertexStepMode::Vertex,
                     // 0: vec2 position
                     // 1: vec2 texture coordinates
                     // 2: uint color
@@ -240,7 +239,7 @@ impl RenderPass {
                             operation: wgpu::BlendOperation::Add,
                         },
                     }),
-                    write_mask: wgpu::ColorWrite::ALL,
+                    write_mask: wgpu::ColorWrites::ALL,
                 }],
             }),
         });
@@ -440,7 +439,7 @@ impl RenderPass {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::COPY_DST,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
         });
 
         queue.write_texture(
@@ -448,6 +447,7 @@ impl RenderPass {
                 texture: &texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
             },
             egui_texture.pixels.as_slice(),
             wgpu::ImageDataLayout {
@@ -618,7 +618,7 @@ impl RenderPass {
                 let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("egui_index_buffer"),
                     contents: data,
-                    usage: wgpu::BufferUsage::INDEX | wgpu::BufferUsage::COPY_DST,
+                    usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
                 });
                 self.index_buffers.push(SizedBuffer {
                     buffer,
@@ -633,7 +633,7 @@ impl RenderPass {
                 let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("egui_vertex_buffer"),
                     contents: data,
-                    usage: wgpu::BufferUsage::VERTEX | wgpu::BufferUsage::COPY_DST,
+                    usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
                 });
 
                 self.vertex_buffers.push(SizedBuffer {
@@ -656,17 +656,17 @@ impl RenderPass {
         let (buffer, storage, name) = match buffer_type {
             BufferType::Index => (
                 &mut self.index_buffers[index],
-                wgpu::BufferUsage::INDEX,
+                wgpu::BufferUsages::INDEX,
                 "index",
             ),
             BufferType::Vertex => (
                 &mut self.vertex_buffers[index],
-                wgpu::BufferUsage::VERTEX,
+                wgpu::BufferUsages::VERTEX,
                 "vertex",
             ),
             BufferType::Uniform => (
                 &mut self.uniform_buffer,
-                wgpu::BufferUsage::UNIFORM,
+                wgpu::BufferUsages::UNIFORM,
                 "uniform",
             ),
         };
@@ -676,7 +676,7 @@ impl RenderPass {
             buffer.buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some(format!("egui_{}_buffer", name).as_str()),
                 contents: bytemuck::cast_slice(data),
-                usage: storage | wgpu::BufferUsage::COPY_DST,
+                usage: storage | wgpu::BufferUsages::COPY_DST,
             });
         } else {
             queue.write_buffer(&buffer.buffer, 0, data);
