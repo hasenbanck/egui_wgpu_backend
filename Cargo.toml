@@ -8,6 +8,7 @@ homepage = "https://github.com/hasenbanck/egui_wgpu_backend"
 repository = "https://github.com/hasenbanck/egui_wgpu_backend"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
+resolver = "2"
 
 [features]
 default = []
@@ -15,5 +16,5 @@ web = []
 
 [dependencies]
 epi = "0.13"
-wgpu = "0.9"
+wgpu = "0.10"
 bytemuck = "1.7"
