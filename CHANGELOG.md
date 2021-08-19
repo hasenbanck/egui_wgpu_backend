@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Updated
 
+## [0.11.0] - 2021-08-19
+### Updated
+- Target wgou 0.10
+- Allow replacing wgpu::Texture for a given egui::TextureId.
+- Reduce panics.
+
 ## [0.10.0] - 2021-06-26
 ### Updated
 - Target egui 0.13
