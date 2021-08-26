@@ -385,7 +385,7 @@ impl RenderPass {
         }
         // we need to convert the texture into rgba_srgb format
         let mut pixels: Vec<u8> = Vec::with_capacity(egui_texture.pixels.len() * 4);
-        for srgba in egui_texture.srgba_pixels() {
+        for srgba in egui_texture.srgba_pixels(1.0) {
             pixels.push(srgba.r());
             pixels.push(srgba.g());
             pixels.push(srgba.b());
