@@ -9,7 +9,7 @@ struct VertexOutput {
 [[block]] struct Locals {
     screen_size: vec2<f32>;
 };
-[[group(0), binding(0)]] var r_locals: Locals;
+[[group(0), binding(0)]] var<uniform> r_locals: Locals;
 
 fn linear_from_srgb(srgb: vec3<f32>) -> vec3<f32> {
     let cutoff = srgb < vec3<f32>(10.31475);
