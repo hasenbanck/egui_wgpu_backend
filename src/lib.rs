@@ -384,12 +384,13 @@ impl RenderPass {
             return;
         }
         // we need to convert the texture into rgba_srgb format
+        // indexing: 0 = r, 1 = g, 2 = b, 3 = a.
         let mut pixels: Vec<u8> = Vec::with_capacity(egui_texture.pixels.len() * 4);
         for srgba in egui_texture.srgba_pixels(1.0) {
-            pixels.push(srgba.r());
-            pixels.push(srgba.g());
-            pixels.push(srgba.b());
-            pixels.push(srgba.a());
+            pixels.push(srgba[0]);
+            pixels.push(srgba[1]);
+            pixels.push(srgba[2]);
+            pixels.push(srgba[3]);
         }
         let egui_texture = egui::Texture {
             version: egui_texture.version,
