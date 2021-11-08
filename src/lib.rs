@@ -586,6 +586,105 @@ impl RenderPass {
         Ok(())
     }
 
+    /// Registers a `wgpu::Texture` with a `egui::TextureId` while also accepting custom
+    /// `wgpu::SamplerDescriptor` options.
+    ///
+    /// This allows applications to specify individual minification/magnification filters as well as
+    /// custom mipmap and tiling options.
+    ///
+    /// The `Texture` must have the format `TextureFormat::Rgba8UnormSrgb` and usage
+    /// `TextureUsage::SAMPLED`. Any compare function supplied in the `SamplerDescriptor` will be
+    /// ignored.
+    pub fn egui_texture_from_wgpu_texture_with_sampler_options(
+        &mut self,
+        device: &wgpu::Device,
+        texture: &wgpu::Texture,
+        sampler_descriptor: wgpu::SamplerDescriptor,
+    ) -> egui::TextureId {
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            compare: None,
+            ..sampler_descriptor
+        });
+
+        // We've bound it here, so that we don't add it as a pending texture.
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(format!("{}_texture_bind_group", self.next_user_texture_id).as_str()),
+            layout: &self.texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(
+                        &texture.create_view(&wgpu::TextureViewDescriptor::default()),
+                    ),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+            ],
+        });
+        let texture_id = egui::TextureId::User(self.next_user_texture_id);
+        self.user_textures.push(Some(bind_group));
+        self.next_user_texture_id += 1;
+
+        texture_id
+    }
+
+    /// Registers a `wgpu::Texture` with an existing `egui::TextureId` while also accepting custom
+    /// `wgpu::SamplerDescriptor` options.
+    ///
+    /// This allows applications to reuse `TextureId`s created with custom sampler options.
+    pub fn update_egui_texture_from_wgpu_texture_with_sampler_options(
+        &mut self,
+        device: &wgpu::Device,
+        texture: &wgpu::Texture,
+        sampler_descriptor: wgpu::SamplerDescriptor,
+        id: egui::TextureId,
+    ) -> Result<(), BackendError> {
+        let id = match id {
+            egui::TextureId::User(id) => id,
+            _ => {
+                return Err(BackendError::InvalidTextureId(
+                    "ID was not of type `TextureId::User`".to_string(),
+                ));
+            }
+        };
+
+        let user_texture = self.user_textures.get_mut(id as usize).ok_or_else(|| {
+            BackendError::InvalidTextureId(format!(
+                "user texture for TextureId {} could not be found",
+                id
+            ))
+        })?;
+
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            compare: None,
+            ..sampler_descriptor
+        });
+
+        // We've bound it here, so that we don't add it as a pending texture.
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(format!("{}_texture_bind_group", self.next_user_texture_id).as_str()),
+            layout: &self.texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(
+                        &texture.create_view(&wgpu::TextureViewDescriptor::default()),
+                    ),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+            ],
+        });
+
+        *user_texture = Some(bind_group);
+
+        Ok(())
+    }
+
     /// Uploads the uniform, vertex and index data used by the render pass.
     /// Should be called before `execute()`.
     pub fn update_buffers(
