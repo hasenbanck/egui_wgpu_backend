@@ -259,6 +259,12 @@ impl RenderPass {
         }
     }
 
+    /// Provides access this render pass's `wgpu::BindGroupLayout` to allow for creating custom
+    /// `wgpu::BindGroup`s.
+    pub fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
+        &self.texture_bind_group_layout
+    }
+
     /// Executes the egui render pass. When `clear_on_draw` is set, the output target will get cleared before writing to it.
     pub fn execute(
         &mut self,
@@ -580,6 +586,58 @@ impl RenderPass {
                 },
             ],
         });
+
+        *user_texture = Some(bind_group);
+
+        Ok(())
+    }
+
+    /// Registers a `wgpu::BindGroup` with a `egui::TextureId`.
+    ///
+    /// BindGroup requirements:
+    /// - Bound `TextureView`s should refer to textures with format `TextureFormat::Rgba8UnormSrgb`
+    ///   and usage `TextureUsage::SAMPLED`.
+    /// - Bound `TextureView`s should have the dimension `D2`.
+    /// - Bound `Sampler`s should not have the compare function.
+    /// - The `BindGroup` should consist of 2 entries. The first entry should have the binding `0`
+    ///   and the texture view as its resource. The second entry should have the binding `1` and the
+    ///   sampler as its resource.
+    pub fn egui_texture_from_wgpu_bind_group(
+        &mut self,
+        bind_group: wgpu::BindGroup,
+    ) -> egui::TextureId {
+        let texture_id = egui::TextureId::User(self.next_user_texture_id);
+        self.user_textures.push(Some(bind_group));
+        self.next_user_texture_id += 1;
+
+        texture_id
+    }
+
+    /// Registers a `wgpu::BindGroup` with an existing `egui::TextureId`.
+    ///
+    /// For BindGroup requirements, see [`egui_texture_from_wgpu_bind_group`].
+    ///
+    /// [`egui_texture_from_wgpu_bind_group`]: Self::egui_texture_from_wgpu_bind_group()
+    pub fn update_egui_texture_from_wgpu_bind_group(
+        &mut self,
+        bind_group: wgpu::BindGroup,
+        id: egui::TextureId,
+    ) -> Result<(), BackendError> {
+        let id = match id {
+            egui::TextureId::User(id) => id,
+            _ => {
+                return Err(BackendError::InvalidTextureId(
+                    "ID was not of type `TextureId::User`".to_string(),
+                ));
+            }
+        };
+
+        let user_texture = self.user_textures.get_mut(id as usize).ok_or_else(|| {
+            BackendError::InvalidTextureId(format!(
+                "user texture for TextureId {} could not be found",
+                id
+            ))
+        })?;
 
         *user_texture = Some(bind_group);
 
