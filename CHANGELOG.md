@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+- `execute_with_renderpass`, allowing rendering egui onto an existing renderpass.
+
+### Deprecated
+- `web` feature is now a no-op, srgb-ness will be derived from output format.
+
 ### Updated
 
 ## [0.14.0] - 2021-10-27
