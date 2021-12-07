@@ -104,6 +104,8 @@ pub struct RenderPass {
 
 impl RenderPass {
     /// Creates a new render pass to render a egui UI.
+    ///
+    /// If the format passed is not a *Srgb format, the shader will automatically convert to sRGB colors in the shader.
     pub fn new(
         device: &wgpu::Device,
         output_format: wgpu::TextureFormat,
@@ -191,10 +193,10 @@ impl RenderPass {
             label: Some("egui_pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
-                entry_point: if cfg!(feature = "web") {
-                    "vs_web_main"
-                } else {
+                entry_point: if output_format.describe().srgb {
                     "vs_main"
+                } else {
+                    "vs_conv_main"
                 },
                 module: &module,
                 buffers: &[wgpu::VertexBufferLayout {

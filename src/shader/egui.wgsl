@@ -47,7 +47,7 @@ fn vs_main(
 }
 
 [[stage(vertex)]]
-fn vs_web_main(
+fn vs_conv_main(
     [[location(0)]] a_pos: vec2<f32>,
     [[location(1)]] a_tex_coord: vec2<f32>,
     [[location(2)]] a_color: u32,
