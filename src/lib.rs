@@ -263,7 +263,7 @@ impl RenderPass {
 
     /// Executes the egui render pass. When `clear_on_draw` is set, the output target will get cleared before writing to it.
     pub fn execute(
-        &mut self,
+        &self,
         encoder: &mut wgpu::CommandEncoder,
         color_attachment: &wgpu::TextureView,
         paint_jobs: &[egui::paint::ClippedMesh],
@@ -276,7 +276,7 @@ impl RenderPass {
             wgpu::LoadOp::Load
         };
 
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             color_attachments: &[wgpu::RenderPassColorAttachment {
                 view: color_attachment,
                 resolve_target: None,
@@ -288,10 +288,25 @@ impl RenderPass {
             depth_stencil_attachment: None,
             label: Some("egui main render pass"),
         });
-        pass.push_debug_group("egui_pass");
-        pass.set_pipeline(&self.render_pipeline);
+        rpass.push_debug_group("egui_pass");
 
-        pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+        self.execute_with_renderpass(&mut rpass, paint_jobs, screen_descriptor)?;
+
+        rpass.pop_debug_group();
+
+        Ok(())
+    }
+
+    /// Executes the egui render pass onto an existing wgpu renderpass.
+    pub fn execute_with_renderpass<'rpass>(
+        &'rpass self,
+        rpass: &mut wgpu::RenderPass<'rpass>,
+        paint_jobs: &[egui::paint::ClippedMesh],
+        screen_descriptor: &ScreenDescriptor,
+    ) -> Result<(), BackendError> {
+        rpass.set_pipeline(&self.render_pipeline);
+
+        rpass.set_bind_group(0, &self.uniform_bind_group, &[]);
 
         let scale_factor = screen_descriptor.scale_factor;
         let physical_width = screen_descriptor.physical_width;
@@ -334,17 +349,15 @@ impl RenderPass {
                     continue;
                 }
 
-                pass.set_scissor_rect(x, y, width, height);
+                rpass.set_scissor_rect(x, y, width, height);
             }
             let bind_group = self.get_texture_bind_group(mesh.texture_id)?;
-            pass.set_bind_group(1, bind_group, &[]);
+            rpass.set_bind_group(1, bind_group, &[]);
 
-            pass.set_index_buffer(index_buffer.buffer.slice(..), wgpu::IndexFormat::Uint32);
-            pass.set_vertex_buffer(0, vertex_buffer.buffer.slice(..));
-            pass.draw_indexed(0..mesh.indices.len() as u32, 0, 0..1);
+            rpass.set_index_buffer(index_buffer.buffer.slice(..), wgpu::IndexFormat::Uint32);
+            rpass.set_vertex_buffer(0, vertex_buffer.buffer.slice(..));
+            rpass.draw_indexed(0..mesh.indices.len() as u32, 0, 0..1);
         }
-
-        pass.pop_debug_group();
 
         Ok(())
     }
