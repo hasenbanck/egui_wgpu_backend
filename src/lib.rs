@@ -174,10 +174,7 @@ impl RenderPass {
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,
                         visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler {
-                            filtering: true,
-                            comparison: false,
-                        },
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                         count: None,
                     },
                 ],
@@ -210,7 +207,7 @@ impl RenderPass {
             },
             primitive: wgpu::PrimitiveState {
                 topology: wgpu::PrimitiveTopology::TriangleList,
-                clamp_depth: false,
+                unclipped_depth: false,
                 conservative: false,
                 cull_mode: None,
                 front_face: wgpu::FrontFace::default(),
@@ -244,6 +241,7 @@ impl RenderPass {
                     write_mask: wgpu::ColorWrites::ALL,
                 }],
             }),
+            multiview: None,
         });
 
         Self {
