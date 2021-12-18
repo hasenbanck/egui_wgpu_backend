@@ -5,14 +5,18 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Updated
 
+## [0.15.0] - 2021-12-18
 ### Added
 - `execute_with_renderpass`, allowing rendering egui onto an existing renderpass.
+- `egui_texture_from_wgpu_texture_with_sampler_options`, allowing custom sampler options.
 
 ### Deprecated
 - `web` feature is now a no-op, srgb-ness will be derived from output format.
 
 ### Updated
+- Target wgpu 0.12
 
 ## [0.14.0] - 2021-10-27
 ### Updated
