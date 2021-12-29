@@ -770,8 +770,13 @@ impl RenderPass {
         egui::TextureId::User(id)
     }
 
+    /// Frees a user location
+    pub fn free_texture(&mut self, id: u64) {
+        self.user_textures.remove(&id);
+    }
+
     /// Frees a texture id (if that texture was a user texture)
-    pub fn free_texture(&mut self, id: egui::TextureId) {
+    pub fn free_texture_id(&mut self, id: egui::TextureId) {
         if let egui::TextureId::User(id) = id {
             self.user_textures.remove(&id);
         }
