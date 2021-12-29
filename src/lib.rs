@@ -11,6 +11,11 @@ use bytemuck::{Pod, Zeroable};
 pub use wgpu;
 use wgpu::util::DeviceExt;
 
+// To make sure we continue being Send and Sync maybe?
+use slab::Slab;
+use std::cell::Cell;
+use std::sync::{Mutex, RwLock};
+
 pub use {epi, epi::egui};
 
 /// Error that the backend can return.
@@ -87,6 +92,9 @@ struct SizedBuffer {
     size: usize,
 }
 
+#[derive(Debug, Clone)]
+struct BindGroupIndex(usize);
+
 /// RenderPass to render a egui based GUI.
 pub struct RenderPass {
     render_pipeline: wgpu::RenderPipeline,
@@ -95,11 +103,12 @@ pub struct RenderPass {
     uniform_buffer: SizedBuffer,
     uniform_bind_group: wgpu::BindGroup,
     texture_bind_group_layout: wgpu::BindGroupLayout,
-    texture_bind_group: Option<wgpu::BindGroup>,
+    texture_bind_group: Option<BindGroupIndex>,
     texture_version: Option<u64>,
-    next_user_texture_id: u64,
-    pending_user_textures: Vec<(u64, egui::Texture)>,
-    user_textures: Vec<Option<wgpu::BindGroup>>,
+    next_user_texture_id: Cell<u64>,
+    pending_user_textures: Mutex<Vec<(u64, UserTexture)>>,
+    user_textures: RwLock<Vec<Option<BindGroupIndex>>>,
+    actual_bind_groups: Slab<wgpu::BindGroup>,
 }
 
 impl RenderPass {
@@ -253,9 +262,10 @@ impl RenderPass {
             texture_bind_group_layout,
             texture_version: None,
             texture_bind_group: None,
-            next_user_texture_id: 0,
-            pending_user_textures: Vec::new(),
-            user_textures: Vec::new(),
+            next_user_texture_id: Cell::new(0),
+            pending_user_textures: Mutex::new(Vec::new()),
+            user_textures: RwLock::new(Vec::new()),
+            actual_bind_groups: Slab::new(),
         }
     }
 
@@ -264,7 +274,7 @@ impl RenderPass {
         &self,
         encoder: &mut wgpu::CommandEncoder,
         color_attachment: &wgpu::TextureView,
-        paint_jobs: &[egui::paint::ClippedMesh],
+        paint_jobs: &[egui::epaint::ClippedMesh],
         screen_descriptor: &ScreenDescriptor,
         clear_color: Option<wgpu::Color>,
     ) -> Result<(), BackendError> {
@@ -299,7 +309,7 @@ impl RenderPass {
     pub fn execute_with_renderpass<'rpass>(
         &'rpass self,
         rpass: &mut wgpu::RenderPass<'rpass>,
-        paint_jobs: &[egui::paint::ClippedMesh],
+        paint_jobs: &[egui::epaint::ClippedMesh],
         screen_descriptor: &ScreenDescriptor,
     ) -> Result<(), BackendError> {
         rpass.set_pipeline(&self.render_pipeline);
@@ -350,7 +360,7 @@ impl RenderPass {
                 rpass.set_scissor_rect(x, y, width, height);
             }
             let bind_group = self.get_texture_bind_group(mesh.texture_id)?;
-            rpass.set_bind_group(1, bind_group, &[]);
+            rpass.set_bind_group(1, &self.actual_bind_groups[bind_group.0], &[]);
 
             rpass.set_index_buffer(index_buffer.buffer.slice(..), wgpu::IndexFormat::Uint32);
             rpass.set_vertex_buffer(0, vertex_buffer.buffer.slice(..));
@@ -363,21 +373,21 @@ impl RenderPass {
     fn get_texture_bind_group(
         &self,
         texture_id: egui::TextureId,
-    ) -> Result<&wgpu::BindGroup, BackendError> {
+    ) -> Result<BindGroupIndex, BackendError> {
         let bind_group = match texture_id {
-            egui::TextureId::Egui => self.texture_bind_group.as_ref().ok_or_else(|| {
+            egui::TextureId::Egui => self.texture_bind_group.clone().ok_or_else(|| {
                 BackendError::Internal("egui texture was not set before the first draw".to_string())
             })?,
             egui::TextureId::User(id) => {
                 let id = id as usize;
-                assert!(id < self.user_textures.len());
-                &(self
-                    .user_textures
+                let user_textures = self.user_textures.read().unwrap();
+                assert!(id < user_textures.len());
+                (user_textures
                     .get(id)
+                    .cloned()
                     .ok_or_else(|| {
                         BackendError::Internal(format!("user texture {} not found", id))
                     })?
-                    .as_ref()
                     .ok_or_else(|| BackendError::Internal(format!("user texture {} freed", id))))?
             }
         };
@@ -390,7 +400,7 @@ impl RenderPass {
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        egui_texture: &egui::Texture,
+        egui_texture: &egui::FontImage,
     ) {
         // Don't update the texture if it hasn't changed.
         if self.texture_version == Some(egui_texture.version) {
@@ -404,7 +414,7 @@ impl RenderPass {
             pixels.push(srgba.b());
             pixels.push(srgba.a());
         }
-        let egui_texture = egui::Texture {
+        let egui_texture = egui::FontImage {
             version: egui_texture.version,
             width: egui_texture.width,
             height: egui_texture.height,
@@ -413,35 +423,40 @@ impl RenderPass {
         let bind_group = self.egui_texture_to_wgpu(device, queue, &egui_texture, "egui");
 
         self.texture_version = Some(egui_texture.version);
-        self.texture_bind_group = Some(bind_group);
+        let index = self.actual_bind_groups.insert(bind_group);
+        self.texture_bind_group = Some(BindGroupIndex(index));
     }
 
     /// Updates the user textures that the app allocated. Should be called before `execute()`.
     pub fn update_user_textures(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
-        let pending_user_textures = std::mem::take(&mut self.pending_user_textures);
-        for (id, texture) in pending_user_textures {
+        for (id, texture) in self.pending_user_textures.lock().unwrap().drain(..) {
             let bind_group = self.egui_texture_to_wgpu(
                 device,
                 queue,
                 &texture,
                 format!("user_texture{}", id).as_str(),
             );
-            self.user_textures.push(Some(bind_group));
+            let index = self.actual_bind_groups.insert(bind_group);
+            println!("Added UTID {} for EGUI {}", index, id);
+            self.user_textures
+                .write()
+                .unwrap()
+                .push(Some(BindGroupIndex(index)));
         }
     }
 
     /// Assumes egui_texture contains srgb data.
     /// This does not match how `egui::Texture` is documented as of writing, but this is how it is used for user textures.
-    fn egui_texture_to_wgpu(
+    fn egui_texture_to_wgpu<T: UploadableTexture>(
         &self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        egui_texture: &egui::Texture,
+        egui_texture: &T,
         label: &str,
     ) -> wgpu::BindGroup {
         let size = wgpu::Extent3d {
-            width: egui_texture.width as u32,
-            height: egui_texture.height as u32,
+            width: egui_texture.width() as u32,
+            height: egui_texture.height() as u32,
             depth_or_array_layers: 1,
         };
 
@@ -462,13 +477,13 @@ impl RenderPass {
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
-            egui_texture.pixels.as_slice(),
+            egui_texture.pixel_data(),
             wgpu::ImageDataLayout {
                 offset: 0,
                 bytes_per_row: NonZeroU32::new(
-                    (egui_texture.pixels.len() / egui_texture.height) as u32,
+                    (egui_texture.pixel_data().len() / egui_texture.height()) as u32,
                 ),
-                rows_per_image: NonZeroU32::new(egui_texture.height as u32),
+                rows_per_image: NonZeroU32::new(egui_texture.height() as u32),
             },
             size,
         );
@@ -516,7 +531,9 @@ impl RenderPass {
             device,
             texture,
             wgpu::SamplerDescriptor {
-                label: Some(format!("{}_texture_sampler", self.next_user_texture_id).as_str()),
+                label: Some(
+                    format!("{}_texture_sampler", self.next_user_texture_id.get()).as_str(),
+                ),
                 mag_filter: texture_filter,
                 min_filter: texture_filter,
                 ..Default::default()
@@ -538,7 +555,9 @@ impl RenderPass {
             device,
             texture,
             wgpu::SamplerDescriptor {
-                label: Some(format!("{}_texture_sampler", self.next_user_texture_id).as_str()),
+                label: Some(
+                    format!("{}_texture_sampler", self.next_user_texture_id.get()).as_str(),
+                ),
                 mag_filter: texture_filter,
                 min_filter: texture_filter,
                 ..Default::default()
@@ -569,7 +588,7 @@ impl RenderPass {
 
         // We've bound it here, so that we don't add it as a pending texture.
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some(format!("{}_texture_bind_group", self.next_user_texture_id).as_str()),
+            label: Some(format!("{}_texture_bind_group", self.next_user_texture_id.get()).as_str()),
             layout: &self.texture_bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
@@ -584,9 +603,14 @@ impl RenderPass {
                 },
             ],
         });
-        let texture_id = egui::TextureId::User(self.next_user_texture_id);
-        self.user_textures.push(Some(bind_group));
-        self.next_user_texture_id += 1;
+        let id = self.next_user_texture_id.get();
+        let texture_id = egui::TextureId::User(id);
+        let index = self.actual_bind_groups.insert(bind_group);
+        self.user_textures
+            .write()
+            .unwrap()
+            .push(Some(BindGroupIndex(index)));
+        self.next_user_texture_id.set(id + 1);
 
         texture_id
     }
@@ -611,7 +635,9 @@ impl RenderPass {
             }
         };
 
-        let user_texture = self.user_textures.get_mut(id as usize).ok_or_else(|| {
+        let mut user_textures = self.user_textures.write().unwrap();
+
+        let user_texture = user_textures.get_mut(id as usize).ok_or_else(|| {
             BackendError::InvalidTextureId(format!(
                 "user texture for TextureId {} could not be found",
                 id
@@ -625,7 +651,7 @@ impl RenderPass {
 
         // We've bound it here, so that we don't add it as a pending texture.
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some(format!("{}_texture_bind_group", self.next_user_texture_id).as_str()),
+            label: Some(format!("{}_texture_bind_group", self.next_user_texture_id.get()).as_str()),
             layout: &self.texture_bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
@@ -641,7 +667,16 @@ impl RenderPass {
             ],
         });
 
-        *user_texture = Some(bind_group);
+        if let Some(index) = user_texture {
+            if let Some(bg) = self.actual_bind_groups.get_mut(index.0) {
+                *bg = bind_group;
+            } else {
+                Err(BackendError::Internal(format!(
+                    "Bind group for UTID {} (EGUI {}) not found",
+                    index.0, id
+                )))?
+            }
+        }
 
         Ok(())
     }
@@ -652,7 +687,7 @@ impl RenderPass {
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        paint_jobs: &[egui::paint::ClippedMesh],
+        paint_jobs: &[egui::epaint::ClippedMesh],
         screen_descriptor: &ScreenDescriptor,
     ) {
         let index_size = self.index_buffers.len();
@@ -744,25 +779,63 @@ impl RenderPass {
     }
 }
 
+// Describes something that can be uploaded to the GPU as a texture
+trait UploadableTexture {
+    fn width(&self) -> usize;
+    fn height(&self) -> usize;
+    fn pixel_data(&self) -> &[u8];
+}
+
+impl UploadableTexture for egui::FontImage {
+    fn width(&self) -> usize {
+        self.width
+    }
+
+    fn height(&self) -> usize {
+        self.height
+    }
+
+    fn pixel_data(&self) -> &[u8] {
+        &self.pixels
+    }
+}
+
+struct UserTexture {
+    width: usize,
+    height: usize,
+    pixels: Vec<u8>,
+}
+
+impl UploadableTexture for UserTexture {
+    fn width(&self) -> usize {
+        self.width
+    }
+
+    fn height(&self) -> usize {
+        self.height
+    }
+
+    fn pixel_data(&self) -> &[u8] {
+        &self.pixels
+    }
+}
+
 impl epi::TextureAllocator for RenderPass {
-    fn alloc_srgba_premultiplied(
-        &mut self,
-        size: (usize, usize),
-        srgba_pixels: &[egui::Color32],
-    ) -> egui::TextureId {
-        let id = self.next_user_texture_id;
-        self.next_user_texture_id += 1;
+    fn alloc(&self, image: epi::Image) -> egui::TextureId {
+        let id = self.next_user_texture_id.get();
+        self.next_user_texture_id.set(id + 1);
+
+        let [width, height] = image.size;
+        let srgba_pixels = image.pixels;
 
         let mut pixels = vec![0u8; srgba_pixels.len() * 4];
         for (target, given) in pixels.chunks_exact_mut(4).zip(srgba_pixels.iter()) {
             target.copy_from_slice(&given.to_array());
         }
 
-        let (width, height) = size;
-        self.pending_user_textures.push((
+        self.pending_user_textures.lock().unwrap().push((
             id,
-            egui::Texture {
-                version: 0,
+            UserTexture {
                 width,
                 height,
                 pixels,
@@ -772,9 +845,11 @@ impl epi::TextureAllocator for RenderPass {
         egui::TextureId::User(id)
     }
 
-    fn free(&mut self, id: egui::TextureId) {
+    fn free(&self, id: egui::TextureId) {
         if let egui::TextureId::User(id) = id {
             self.user_textures
+                .write()
+                .unwrap()
                 .get_mut(id as usize)
                 .and_then(|option| option.take());
         }
