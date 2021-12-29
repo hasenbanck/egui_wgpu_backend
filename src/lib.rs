@@ -11,8 +11,8 @@ use bytemuck::{Pod, Zeroable};
 pub use wgpu;
 use wgpu::util::DeviceExt;
 
-// To make sure we continue being Send and Sync maybe?
-use std::sync::Mutex;
+use std::collections::HashMap;
+use std::sync::Arc;
 
 pub use {epi, epi::egui};
 
@@ -40,9 +40,7 @@ impl std::fmt::Display for BackendError {
 
 impl std::error::Error for BackendError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match *self {
-            _ => None,
-        }
+        None
     }
 }
 
@@ -102,7 +100,7 @@ pub struct RenderPass {
     texture_version: Option<u64>,
     next_user_texture_id: u64,
     pending_user_textures: Vec<(u64, UserTexture)>,
-    user_textures: Vec<Option<wgpu::BindGroup>>,
+    user_textures: HashMap<u64, Arc<wgpu::BindGroup>>,
 }
 
 impl RenderPass {
@@ -258,7 +256,7 @@ impl RenderPass {
             texture_bind_group: None,
             next_user_texture_id: 0,
             pending_user_textures: Vec::new(),
-            user_textures: Vec::new(),
+            user_textures: HashMap::new(),
         }
     }
 
@@ -372,16 +370,13 @@ impl RenderPass {
                 BackendError::Internal("egui texture was not set before the first draw".to_string())
             })?,
             egui::TextureId::User(id) => {
-                let id = id as usize;
-                assert!(id < self.user_textures.len());
-                (self
-                    .user_textures
-                    .get(id)
+                assert!(self.user_textures.contains_key(&id));
+                self.user_textures
+                    .get(&id)
                     .ok_or_else(|| {
                         BackendError::Internal(format!("user texture {} not found", id))
                     })?
                     .as_ref()
-                    .ok_or_else(|| BackendError::Internal(format!("user texture {} freed", id))))?
             }
         };
 
@@ -421,14 +416,19 @@ impl RenderPass {
 
     /// Updates the user textures that the app allocated. Should be called before `execute()`.
     pub fn update_user_textures(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
-        for (id, texture) in self.pending_user_textures.drain(..) {
+        for (id, texture) in self
+            .pending_user_textures
+            .drain(..)
+            .collect::<Vec<_>>()
+            .into_iter()
+        {
             let bind_group = self.egui_texture_to_wgpu(
                 device,
                 queue,
                 &texture,
                 format!("user_texture{}", id).as_str(),
             );
-            self.user_textures.push(Some(bind_group));
+            self.user_textures.insert(id, Arc::new(bind_group));
         }
     }
 
@@ -588,7 +588,7 @@ impl RenderPass {
         });
         let id = self.next_user_texture_id;
         let texture_id = egui::TextureId::User(id);
-        self.user_textures.push(Some(bind_group));
+        self.user_textures.insert(id, Arc::new(bind_group));
         self.next_user_texture_id += 1;
 
         texture_id
@@ -614,9 +614,7 @@ impl RenderPass {
             }
         };
 
-        let mut user_textures = self.user_textures;
-
-        let user_texture = user_textures.get_mut(id as usize).ok_or_else(|| {
+        let user_texture = self.user_textures.get_mut(&id).ok_or_else(|| {
             BackendError::InvalidTextureId(format!(
                 "user texture for TextureId {} could not be found",
                 id
@@ -646,7 +644,7 @@ impl RenderPass {
             ],
         });
 
-        *user_texture = Some(bind_group);
+        *user_texture = Arc::new(bind_group);
 
         Ok(())
     }
@@ -747,6 +745,37 @@ impl RenderPass {
             queue.write_buffer(&buffer.buffer, 0, data);
         }
     }
+
+    // -------
+
+    /// Creates a texture at a certain user texture location
+    pub fn set_texture(&mut self, id: u64, image: epi::Image) -> egui::TextureId {
+        let [width, height] = image.size;
+        let srgba_pixels = image.pixels;
+
+        let mut pixels = vec![0u8; srgba_pixels.len() * 4];
+        for (target, given) in pixels.chunks_exact_mut(4).zip(srgba_pixels.iter()) {
+            target.copy_from_slice(&given.to_array());
+        }
+
+        self.pending_user_textures.push((
+            id,
+            UserTexture {
+                width,
+                height,
+                pixels,
+            },
+        ));
+
+        egui::TextureId::User(id)
+    }
+
+    /// Frees a texture id (if that texture was a user texture)
+    pub fn free_texture(&mut self, id: egui::TextureId) {
+        if let egui::TextureId::User(id) = id {
+            self.user_textures.remove(&id);
+        }
+    }
 }
 
 // Describes something that can be uploaded to the GPU as a texture
@@ -790,41 +819,58 @@ impl UploadableTexture for UserTexture {
     }
 }
 
-impl epi::TextureAllocator for Mutex<RenderPass> {
-    fn alloc(&self, image: epi::Image) -> egui::TextureId {
-        let id = self.next_user_texture_id.get();
-        self.next_user_texture_id.set(id + 1);
+impl epi::NativeTexture for RenderPass {
+    type Texture = Arc<wgpu::BindGroup>;
 
-        let [width, height] = image.size;
-        let srgba_pixels = image.pixels;
-
-        let mut pixels = vec![0u8; srgba_pixels.len() * 4];
-        for (target, given) in pixels.chunks_exact_mut(4).zip(srgba_pixels.iter()) {
-            target.copy_from_slice(&given.to_array());
-        }
-
-        self.pending_user_textures.lock().unwrap().push((
-            id,
-            UserTexture {
-                width,
-                height,
-                pixels,
-            },
-        ));
-
+    fn register_native_texture(&mut self, bg: Self::Texture) -> egui::TextureId {
+        let id = self.next_user_texture_id;
+        self.next_user_texture_id += 1;
+        self.user_textures.insert(id, bg);
         egui::TextureId::User(id)
     }
 
-    fn free(&self, id: egui::TextureId) {
+    fn replace_native_texture(&mut self, id: egui::TextureId, tex: Self::Texture) {
         if let egui::TextureId::User(id) = id {
-            self.user_textures
-                .write()
-                .unwrap()
-                .get_mut(id as usize)
-                .and_then(|option| option.take());
+            self.user_textures.insert(id, tex);
         }
     }
 }
+//
+// impl epi::TextureAllocator for Mutex<RenderPass> {
+//     fn alloc(&self, image: epi::Image) -> egui::TextureId {
+//         let id = self.next_user_texture_id.get();
+//         self.next_user_texture_id.set(id + 1);
+//
+//         let [width, height] = image.size;
+//         let srgba_pixels = image.pixels;
+//
+//         let mut pixels = vec![0u8; srgba_pixels.len() * 4];
+//         for (target, given) in pixels.chunks_exact_mut(4).zip(srgba_pixels.iter()) {
+//             target.copy_from_slice(&given.to_array());
+//         }
+//
+//         self.pending_user_textures.lock().unwrap().push((
+//             id,
+//             UserTexture {
+//                 width,
+//                 height,
+//                 pixels,
+//             },
+//         ));
+//
+//         egui::TextureId::User(id)
+//     }
+//
+//     fn free(&self, id: egui::TextureId) {
+//         if let egui::TextureId::User(id) = id {
+//             self.user_textures
+//                 .write()
+//                 .unwrap()
+//                 .get_mut(id as usize)
+//                 .and_then(|option| option.take());
+//         }
+//     }
+// }
 
 // Needed since we can't use bytemuck for external types.
 fn as_byte_slice<T>(slice: &[T]) -> &[u8] {
