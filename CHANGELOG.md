@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Updated
 
+## [0.16.0] - 2021-12-31
+### Updated
+- Target egui 0.16
+
 ## [0.15.0] - 2021-12-18
 ### Added
 - `execute_with_renderpass`, allowing rendering egui onto an existing renderpass.
