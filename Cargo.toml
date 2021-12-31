@@ -1,6 +1,6 @@
 [package]
 name = "egui_wgpu_backend"
-version = "0.15.0"
+version = "0.16.0"
 authors = ["Nils Hasenbanck <nils@hasenbanck.de>"]
 edition = "2018"
 description = "Backend code to use egui with wgpu."
@@ -15,6 +15,6 @@ default = []
 web = []
 
 [dependencies]
-epi = "0.15"
+epi = "0.16"
 wgpu = "0.12"
 bytemuck = "1.7"
