@@ -10,8 +10,6 @@ use bytemuck::{Pod, Zeroable};
 pub use wgpu;
 use wgpu::util::DeviceExt;
 
-pub use {epi, epi::egui};
-
 /// Error that the backend can return.
 #[derive(Debug)]
 pub enum BackendError {
