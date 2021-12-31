@@ -12,7 +12,6 @@ pub use wgpu;
 use wgpu::util::DeviceExt;
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
 pub use {epi, epi::egui};
 
@@ -100,7 +99,7 @@ pub struct RenderPass {
     texture_version: Option<u64>,
     next_user_texture_id: u64,
     pending_user_textures: Vec<(u64, UserTexture)>,
-    user_textures: HashMap<u64, Arc<wgpu::BindGroup>>,
+    user_textures: HashMap<u64, wgpu::BindGroup>,
 }
 
 impl RenderPass {
@@ -371,12 +370,9 @@ impl RenderPass {
             })?,
             egui::TextureId::User(id) => {
                 assert!(self.user_textures.contains_key(&id));
-                self.user_textures
-                    .get(&id)
-                    .ok_or_else(|| {
-                        BackendError::Internal(format!("user texture {} not found", id))
-                    })?
-                    .as_ref()
+                self.user_textures.get(&id).ok_or_else(|| {
+                    BackendError::Internal(format!("user texture {} not found", id))
+                })?
             }
         };
 
@@ -428,7 +424,7 @@ impl RenderPass {
                 &texture,
                 format!("user_texture{}", id).as_str(),
             );
-            self.user_textures.insert(id, Arc::new(bind_group));
+            self.user_textures.insert(id, bind_group);
         }
     }
 
@@ -588,7 +584,7 @@ impl RenderPass {
         });
         let id = self.next_user_texture_id;
         let texture_id = egui::TextureId::User(id);
-        self.user_textures.insert(id, Arc::new(bind_group));
+        self.user_textures.insert(id, bind_group);
         self.next_user_texture_id += 1;
 
         texture_id
@@ -644,7 +640,7 @@ impl RenderPass {
             ],
         });
 
-        *user_texture = Arc::new(bind_group);
+        *user_texture = bind_group;
 
         Ok(())
     }
@@ -749,36 +745,41 @@ impl RenderPass {
     // -------
 
     /// Creates a texture at a certain user texture location
-    pub fn set_texture(&mut self, id: u64, image: epi::Image) -> egui::TextureId {
-        let [width, height] = image.size;
-        let srgba_pixels = image.pixels;
+    pub fn set_texture(&mut self, image: epi::Image) -> egui::TextureId {
+        let id = self.next_user_texture_id;
+        self.next_user_texture_id += 1;
 
-        let mut pixels = vec![0u8; srgba_pixels.len() * 4];
-        for (target, given) in pixels.chunks_exact_mut(4).zip(srgba_pixels.iter()) {
-            target.copy_from_slice(&given.to_array());
-        }
-
-        self.pending_user_textures.push((
-            id,
-            UserTexture {
-                width,
-                height,
-                pixels,
-            },
-        ));
+        self.pending_user_textures
+            .push((id, UserTexture::new(image)));
 
         egui::TextureId::User(id)
     }
 
-    /// Frees a user location
-    pub fn free_texture(&mut self, id: u64) {
-        self.user_textures.remove(&id);
-    }
-
     /// Frees a texture id (if that texture was a user texture)
-    pub fn free_texture_id(&mut self, id: egui::TextureId) {
+    pub fn free_texture(&mut self, id: egui::TextureId) {
         if let egui::TextureId::User(id) = id {
             self.user_textures.remove(&id);
+        }
+    }
+
+    /// Extract texture allocation data from an `epi::Frame`
+    ///
+    /// Call this if using `eframe` to run your application.
+    ///
+    /// Ignore this method if not using `eframe`
+    pub fn extract_frame_data(&mut self, frame: &epi::Frame) {
+        if let Ok(mut frame) = frame.0.lock() {
+            let tex_alloc_data = frame.output.tex_allocation_data.take();
+            // Here we can clobber previous allocs, so use eframe or directly do your stuff,
+            // mix-and-match isn't supported.
+            for (id, image) in tex_alloc_data.creations.into_iter() {
+                self.pending_user_textures
+                    .push((id, UserTexture::new(image)))
+            }
+
+            for id in tex_alloc_data.destructions.into_iter() {
+                self.user_textures.remove(&id);
+            }
         }
     }
 }
@@ -810,6 +811,24 @@ struct UserTexture {
     pixels: Vec<u8>,
 }
 
+impl UserTexture {
+    fn new(image: epi::Image) -> Self {
+        let [width, height] = image.size;
+        let srgba_pixels = image.pixels;
+
+        let mut pixels = vec![0u8; srgba_pixels.len() * 4];
+        for (target, given) in pixels.chunks_exact_mut(4).zip(srgba_pixels.iter()) {
+            target.copy_from_slice(&given.to_array());
+        }
+
+        Self {
+            width,
+            height,
+            pixels,
+        }
+    }
+}
+
 impl UploadableTexture for UserTexture {
     fn width(&self) -> usize {
         self.width
@@ -823,59 +842,6 @@ impl UploadableTexture for UserTexture {
         &self.pixels
     }
 }
-
-impl epi::NativeTexture for RenderPass {
-    type Texture = Arc<wgpu::BindGroup>;
-
-    fn register_native_texture(&mut self, bg: Self::Texture) -> egui::TextureId {
-        let id = self.next_user_texture_id;
-        self.next_user_texture_id += 1;
-        self.user_textures.insert(id, bg);
-        egui::TextureId::User(id)
-    }
-
-    fn replace_native_texture(&mut self, id: egui::TextureId, tex: Self::Texture) {
-        if let egui::TextureId::User(id) = id {
-            self.user_textures.insert(id, tex);
-        }
-    }
-}
-//
-// impl epi::TextureAllocator for Mutex<RenderPass> {
-//     fn alloc(&self, image: epi::Image) -> egui::TextureId {
-//         let id = self.next_user_texture_id.get();
-//         self.next_user_texture_id.set(id + 1);
-//
-//         let [width, height] = image.size;
-//         let srgba_pixels = image.pixels;
-//
-//         let mut pixels = vec![0u8; srgba_pixels.len() * 4];
-//         for (target, given) in pixels.chunks_exact_mut(4).zip(srgba_pixels.iter()) {
-//             target.copy_from_slice(&given.to_array());
-//         }
-//
-//         self.pending_user_textures.lock().unwrap().push((
-//             id,
-//             UserTexture {
-//                 width,
-//                 height,
-//                 pixels,
-//             },
-//         ));
-//
-//         egui::TextureId::User(id)
-//     }
-//
-//     fn free(&self, id: egui::TextureId) {
-//         if let egui::TextureId::User(id) = id {
-//             self.user_textures
-//                 .write()
-//                 .unwrap()
-//                 .get_mut(id as usize)
-//                 .and_then(|option| option.take());
-//         }
-//     }
-// }
 
 // Needed since we can't use bytemuck for external types.
 fn as_byte_slice<T>(slice: &[T]) -> &[u8] {
