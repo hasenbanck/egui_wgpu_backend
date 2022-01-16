@@ -8,7 +8,7 @@ use std::{borrow::Cow, collections::HashMap, fmt::Formatter, num::NonZeroU32};
 
 use bytemuck::{Pod, Zeroable};
 pub use wgpu;
-use wgpu::util::DeviceExt;
+use wgpu::{util::DeviceExt};
 
 /// Error that the backend can return.
 #[derive(Debug)]
@@ -496,7 +496,7 @@ impl RenderPass {
     pub fn egui_texture_from_wgpu_texture(
         &mut self,
         device: &wgpu::Device,
-        texture: &wgpu::Texture,
+        texture: &wgpu::TextureView,
         texture_filter: wgpu::FilterMode,
     ) -> egui::TextureId {
         self.egui_texture_from_wgpu_texture_with_sampler_options(
@@ -517,7 +517,7 @@ impl RenderPass {
     pub fn update_egui_texture_from_wgpu_texture(
         &mut self,
         device: &wgpu::Device,
-        texture: &wgpu::Texture,
+        texture: &wgpu::TextureView,
         texture_filter: wgpu::FilterMode,
         id: egui::TextureId,
     ) -> Result<(), BackendError> {
@@ -546,7 +546,7 @@ impl RenderPass {
     pub fn egui_texture_from_wgpu_texture_with_sampler_options(
         &mut self,
         device: &wgpu::Device,
-        texture: &wgpu::Texture,
+        texture: &wgpu::TextureView,
         sampler_descriptor: wgpu::SamplerDescriptor,
     ) -> egui::TextureId {
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -561,9 +561,7 @@ impl RenderPass {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::TextureView(
-                        &texture.create_view(&wgpu::TextureViewDescriptor::default()),
-                    ),
+                    resource: wgpu::BindingResource::TextureView(texture),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
@@ -586,7 +584,7 @@ impl RenderPass {
     pub fn update_egui_texture_from_wgpu_texture_with_sampler_options(
         &mut self,
         device: &wgpu::Device,
-        texture: &wgpu::Texture,
+        texture: &wgpu::TextureView,
         sampler_descriptor: wgpu::SamplerDescriptor,
         id: egui::TextureId,
     ) -> Result<(), BackendError> {
@@ -619,7 +617,7 @@ impl RenderPass {
                 wgpu::BindGroupEntry {
                     binding: 0,
                     resource: wgpu::BindingResource::TextureView(
-                        &texture.create_view(&wgpu::TextureViewDescriptor::default()),
+                        texture,
                     ),
                 },
                 wgpu::BindGroupEntry {
