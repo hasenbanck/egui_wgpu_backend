@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Updated
+- Target egui 0.17
+- `update_textures` and `update_user_textures` replaced by `add_textures` (to be called before
+  `execute`) and `remove_textures` (to be called after `execute`).
+- Enables the `convert_bytemuck` feature on egui to avoid internal use of unsafe.
 
 ## [0.16.0] - 2021-12-31
 ### Updated
