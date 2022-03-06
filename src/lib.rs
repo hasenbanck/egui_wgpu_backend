@@ -4,11 +4,16 @@
 //! A basic usage example can be found [here](https://github.com/hasenbanck/egui_example).
 #![warn(missing_docs)]
 
-use std::{borrow::Cow, collections::HashMap, fmt::Formatter, num::NonZeroU32};
+use std::{
+    borrow::Cow,
+    collections::{hash_map::Entry, HashMap},
+    fmt::Formatter,
+    num::NonZeroU32,
+};
 
 use bytemuck::{Pod, Zeroable};
 pub use wgpu;
-use wgpu::{util::DeviceExt};
+use wgpu::util::DeviceExt;
 
 /// Error that the backend can return.
 #[derive(Debug)]
@@ -90,12 +95,12 @@ pub struct RenderPass {
     uniform_buffer: SizedBuffer,
     uniform_bind_group: wgpu::BindGroup,
     texture_bind_group_layout: wgpu::BindGroupLayout,
-    texture_bind_group: Option<wgpu::BindGroup>,
-    texture_version: Option<u64>,
     next_user_texture_id: u64,
-    pending_user_textures: Vec<(u64, egui::FontImage)>,
-    /// Index is the same as in [`egui::TextureId::User`].
-    user_textures: HashMap<u64, wgpu::BindGroup>,
+
+    /// Map of egui texture IDs to textures and their associated bindgroups (texture view +
+    /// sampler). The texture may be None if the TextureId is just a handle to a user-provided
+    /// sampler.
+    textures: HashMap<egui::TextureId, (Option<wgpu::Texture>, wgpu::BindGroup)>,
 }
 
 impl RenderPass {
@@ -247,11 +252,8 @@ impl RenderPass {
             uniform_buffer,
             uniform_bind_group,
             texture_bind_group_layout,
-            texture_version: None,
-            texture_bind_group: None,
             next_user_texture_id: 0,
-            pending_user_textures: Vec::new(),
-            user_textures: HashMap::new(),
+            textures: HashMap::new(),
         }
     }
 
@@ -360,131 +362,148 @@ impl RenderPass {
         &self,
         texture_id: egui::TextureId,
     ) -> Result<&wgpu::BindGroup, BackendError> {
-        let bind_group = match texture_id {
-            egui::TextureId::Egui => self.texture_bind_group.as_ref().ok_or_else(|| {
-                BackendError::Internal("egui texture was not set before the first draw".to_string())
-            })?,
-            egui::TextureId::User(id) => self
-                .user_textures
-                .get(&id)
-                .ok_or_else(|| BackendError::Internal(format!("user texture {} not found", id)))?,
-        };
-
-        Ok(bind_group)
+        self.textures
+            .get(&texture_id)
+            .ok_or_else(|| {
+                BackendError::Internal(format!("Texture {:?} used but not live", texture_id))
+            })
+            .map(|x| &x.1)
     }
 
     /// Updates the texture used by egui for the fonts etc. Should be called before `execute()`.
-    pub fn update_texture(
+    pub fn add_textures(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        font_image: &egui::FontImage,
-    ) {
-        // Don't update the texture if it hasn't changed.
-        if self.texture_version == Some(font_image.version) {
-            return;
-        }
-        // We need to convert the texture into rgba_srgb format.
-        let mut pixels: Vec<u8> = Vec::with_capacity(font_image.pixels.len() * 4);
-        for srgba in font_image.srgba_pixels(1.0) {
-            pixels.push(srgba.r());
-            pixels.push(srgba.g());
-            pixels.push(srgba.b());
-            pixels.push(srgba.a());
-        }
-        let font_image = egui::FontImage {
-            version: font_image.version,
-            width: font_image.width,
-            height: font_image.height,
-            pixels,
-        };
-        let bind_group = self.egui_texture_to_wgpu(device, queue, &font_image, "egui");
+        textures: &egui::TexturesDelta,
+    ) -> Result<(), BackendError> {
+        for (texture_id, image_delta) in textures.set.iter() {
+            let image_size = image_delta.image.size();
 
-        self.texture_version = Some(font_image.version);
-        self.texture_bind_group = Some(bind_group);
-    }
+            let origin = match image_delta.pos {
+                Some([x, y]) => wgpu::Origin3d {
+                    x: x as u32,
+                    y: y as u32,
+                    z: 0,
+                },
+                None => wgpu::Origin3d::ZERO,
+            };
 
-    /// Updates the user textures that the app allocated. Should be called before `execute()`.
-    pub fn update_user_textures(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
-        let pending_user_textures = std::mem::take(&mut self.pending_user_textures);
-        for (id, texture) in pending_user_textures {
-            let bind_group = self.egui_texture_to_wgpu(
-                device,
-                queue,
-                &texture,
-                format!("user_texture{}", id).as_str(),
-            );
-            self.user_textures.insert(id, bind_group);
-        }
-    }
+            let alpha_srgb_pixels: Option<Vec<_>> = match &image_delta.image {
+                egui::ImageData::Color(_) => None,
+                egui::ImageData::Alpha(a) => Some(a.srgba_pixels(1.0).collect()),
+            };
 
-    /// Assumes font_image contains srgb data.
-    fn egui_texture_to_wgpu(
-        &self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        font_image: &egui::FontImage,
-        label: &str,
-    ) -> wgpu::BindGroup {
-        let size = wgpu::Extent3d {
-            width: font_image.width as u32,
-            height: font_image.height as u32,
-            depth_or_array_layers: 1,
-        };
+            let image_data: &[u8] = match &image_delta.image {
+                egui::ImageData::Color(c) => bytemuck::cast_slice(c.pixels.as_slice()),
+                egui::ImageData::Alpha(_) => {
+                    // The unwrap here should never fail as alpha_srgb_pixels will have been set to
+                    // `Some` above.
+                    bytemuck::cast_slice(
+                        alpha_srgb_pixels
+                            .as_ref()
+                            .expect("Alpha texture should have been converted already")
+                            .as_slice(),
+                    )
+                }
+            };
 
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some(format!("{}_font_image", label).as_str()),
-            size,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-        });
+            let image_size = wgpu::Extent3d {
+                width: image_size[0] as u32,
+                height: image_size[1] as u32,
+                depth_or_array_layers: 1,
+            };
 
-        queue.write_texture(
-            wgpu::ImageCopyTexture {
-                texture: &texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            font_image.pixels.as_slice(),
-            wgpu::ImageDataLayout {
+            let image_data_layout = wgpu::ImageDataLayout {
                 offset: 0,
-                bytes_per_row: NonZeroU32::new(
-                    (font_image.pixels.len() / font_image.height) as u32,
-                ),
-                rows_per_image: NonZeroU32::new(font_image.height as u32),
-            },
-            size,
-        );
+                bytes_per_row: NonZeroU32::new(4 * image_size.width),
+                rows_per_image: None,
+            };
 
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some(format!("{}_texture_sampler", label).as_str()),
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            ..Default::default()
-        });
+            let label_base = match texture_id {
+                egui::TextureId::Managed(m) => format!("egui_image_{}", m),
+                egui::TextureId::User(u) => format!("egui_user_image_{}", u),
+            };
 
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some(format!("{}_texture_bind_group", label).as_str()),
-            layout: &self.texture_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(
-                        &texture.create_view(&wgpu::TextureViewDescriptor::default()),
-                    ),
+            match self.textures.entry(texture_id.clone()) {
+                Entry::Occupied(mut o) => match image_delta.pos {
+                    None => {
+                        let (texture, bind_group) = create_texture_and_bind_group(
+                            device,
+                            queue,
+                            &label_base,
+                            origin,
+                            image_data,
+                            image_data_layout,
+                            image_size,
+                            &self.texture_bind_group_layout,
+                        );
+
+                        let (texture, _) = o.insert((Some(texture), bind_group));
+
+                        if let Some(texture) = texture {
+                            texture.destroy();
+                        }
+                    }
+                    Some(_) => {
+                        if let Some(texture) = o.get().0.as_ref() {
+                            queue.write_texture(
+                                wgpu::ImageCopyTexture {
+                                    texture,
+                                    mip_level: 0,
+                                    origin,
+                                    aspect: wgpu::TextureAspect::All,
+                                },
+                                image_data,
+                                image_data_layout,
+                                image_size,
+                            );
+                        } else {
+                            return Err(BackendError::InvalidTextureId(format!(
+                                "Update of unmanaged texture {:?}",
+                                texture_id
+                            )));
+                        }
+                    }
                 },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
-            ],
-        });
+                Entry::Vacant(v) => {
+                    let (texture, bind_group) = create_texture_and_bind_group(
+                        device,
+                        queue,
+                        &label_base,
+                        origin,
+                        image_data,
+                        image_data_layout,
+                        image_size,
+                        &self.texture_bind_group_layout,
+                    );
 
-        bind_group
+                    v.insert((Some(texture), bind_group));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Remove the textures egui no longer needs. Should be called after `execute()`
+    pub fn remove_textures(&mut self, textures: egui::TexturesDelta) -> Result<(), BackendError> {
+        for texture_id in textures.free {
+            let (texture, _binding) = self.textures.remove(&texture_id).ok_or_else(|| {
+                // This can happen due to a bug in egui, or if the user doesn't call `add_textures`
+                // when required.
+                BackendError::InvalidTextureId(format!(
+                    "Attempted to remove an unknown texture {:?}",
+                    texture_id
+                ))
+            })?;
+
+            if let Some(texture) = texture {
+                texture.destroy();
+            }
+        }
+
+        Ok(())
     }
 
     /// Registers a `wgpu::Texture` with a `egui::TextureId`.
@@ -503,7 +522,13 @@ impl RenderPass {
             device,
             texture,
             wgpu::SamplerDescriptor {
-                label: Some(format!("{}_texture_sampler", self.next_user_texture_id).as_str()),
+                label: Some(
+                    format!(
+                        "egui_user_image_{}_texture_sampler",
+                        self.next_user_texture_id
+                    )
+                    .as_str(),
+                ),
                 mag_filter: texture_filter,
                 min_filter: texture_filter,
                 ..Default::default()
@@ -525,7 +550,13 @@ impl RenderPass {
             device,
             texture,
             wgpu::SamplerDescriptor {
-                label: Some(format!("{}_texture_sampler", self.next_user_texture_id).as_str()),
+                label: Some(
+                    format!(
+                        "egui_user_image_{}_texture_sampler",
+                        self.next_user_texture_id
+                    )
+                    .as_str(),
+                ),
                 mag_filter: texture_filter,
                 min_filter: texture_filter,
                 ..Default::default()
@@ -554,9 +585,14 @@ impl RenderPass {
             ..sampler_descriptor
         });
 
-        // We've bound it here, so that we don't add it as a pending texture.
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some(format!("{}_texture_bind_group", self.next_user_texture_id).as_str()),
+            label: Some(
+                format!(
+                    "egui_user_image_{}_texture_bind_group",
+                    self.next_user_texture_id
+                )
+                .as_str(),
+            ),
             layout: &self.texture_bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
@@ -569,9 +605,9 @@ impl RenderPass {
                 },
             ],
         });
+
         let id = egui::TextureId::User(self.next_user_texture_id);
-        self.user_textures
-            .insert(self.next_user_texture_id, bind_group);
+        self.textures.insert(id, (None, bind_group));
         self.next_user_texture_id += 1;
 
         id
@@ -588,37 +624,34 @@ impl RenderPass {
         sampler_descriptor: wgpu::SamplerDescriptor,
         id: egui::TextureId,
     ) -> Result<(), BackendError> {
-        let id = match id {
-            egui::TextureId::User(id) => id,
-            _ => {
-                return Err(BackendError::InvalidTextureId(
-                    "ID was not of type `TextureId::User`".to_string(),
-                ));
-            }
-        };
+        if let egui::TextureId::Managed(_) = id {
+            return Err(BackendError::InvalidTextureId(
+                "ID was not of type `TextureId::User`".to_string(),
+            ));
+        }
 
-        let user_texture = self.user_textures.get_mut(&id).ok_or_else(|| {
-            BackendError::InvalidTextureId(format!(
-                "user texture for TextureId {} could not be found",
-                id
-            ))
-        })?;
+        let (_user_texture, user_texture_binding) =
+            self.textures.get_mut(&id).ok_or_else(|| {
+                BackendError::InvalidTextureId(format!(
+                    "user texture for TextureId {:?} could not be found",
+                    id
+                ))
+            })?;
 
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             compare: None,
             ..sampler_descriptor
         });
 
-        // We've bound it here, so that we don't add it as a pending texture.
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some(format!("{}_texture_bind_group", self.next_user_texture_id).as_str()),
+            label: Some(
+                format!("egui_user_{}_texture_bind_group", self.next_user_texture_id).as_str(),
+            ),
             layout: &self.texture_bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::TextureView(
-                        texture,
-                    ),
+                    resource: wgpu::BindingResource::TextureView(texture),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
@@ -627,7 +660,7 @@ impl RenderPass {
             ],
         });
 
-        *user_texture = bind_group;
+        *user_texture_binding = bind_group;
 
         Ok(())
     }
@@ -672,7 +705,7 @@ impl RenderPass {
                 });
             }
 
-            let data: &[u8] = as_byte_slice(&mesh.vertices);
+            let data: &[u8] = bytemuck::cast_slice(&mesh.vertices);
             if i < vertex_size {
                 self.update_buffer(device, queue, BufferType::Vertex, i, data)
             } else {
@@ -730,9 +763,62 @@ impl RenderPass {
     }
 }
 
-// Needed since we can't use bytemuck for external types.
-fn as_byte_slice<T>(slice: &[T]) -> &[u8] {
-    let len = slice.len() * std::mem::size_of::<T>();
-    let ptr = slice.as_ptr() as *const u8;
-    unsafe { std::slice::from_raw_parts(ptr, len) }
+/// Create a texture and bind group from existing data
+fn create_texture_and_bind_group(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    label_base: &str,
+    origin: wgpu::Origin3d,
+    image_data: &[u8],
+    image_data_layout: wgpu::ImageDataLayout,
+    image_size: wgpu::Extent3d,
+    texture_bind_group_layout: &wgpu::BindGroupLayout,
+) -> (wgpu::Texture, wgpu::BindGroup) {
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some(format!("{}_texture", label_base).as_str()),
+        size: image_size,
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+    });
+
+    queue.write_texture(
+        wgpu::ImageCopyTexture {
+            texture: &texture,
+            mip_level: 0,
+            origin,
+            aspect: wgpu::TextureAspect::All,
+        },
+        image_data,
+        image_data_layout,
+        image_size,
+    );
+
+    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        label: Some(format!("{}_sampler", label_base).as_str()),
+        mag_filter: wgpu::FilterMode::Linear,
+        min_filter: wgpu::FilterMode::Linear,
+        ..Default::default()
+    });
+
+    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some(format!("{}_texture_bind_group", label_base).as_str()),
+        layout: &texture_bind_group_layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(
+                    &texture.create_view(&wgpu::TextureViewDescriptor::default()),
+                ),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::Sampler(&sampler),
+            },
+        ],
+    });
+
+    (texture, bind_group)
 }
