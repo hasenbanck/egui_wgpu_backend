@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Updated
+
+## [0.17.0] - 2021-03-09
+### Updated
 - Target egui 0.17
 - `update_textures` and `update_user_textures` replaced by `add_textures` (to be called before
   `execute`) and `remove_textures` (to be called after `execute`).
