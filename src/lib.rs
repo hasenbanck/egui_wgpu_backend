@@ -74,6 +74,9 @@ impl ScreenDescriptor {
 #[repr(C)]
 struct UniformBuffer {
     screen_size: [f32; 2],
+    // Without this padding, rendering would fail for the WebGL backend due to the minimum uniform buffer size of 16 bytes.
+    // See https://github.com/hasenbanck/egui_wgpu_backend/issues/58
+    _padding: [f32; 2],
 }
 
 unsafe impl Pod for UniformBuffer {}
@@ -122,6 +125,7 @@ impl RenderPass {
             label: Some("egui_uniform_buffer"),
             contents: bytemuck::cast_slice(&[UniformBuffer {
                 screen_size: [0.0, 0.0],
+                _padding: [0.0; 2],
             }]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
@@ -686,6 +690,7 @@ impl RenderPass {
             0,
             bytemuck::cast_slice(&[UniformBuffer {
                 screen_size: [logical_width as f32, logical_height as f32],
+                _padding: [0.0; 2],
             }]),
         );
 
