@@ -133,7 +133,6 @@ impl RenderPass {
             buffer: uniform_buffer,
             size: std::mem::size_of::<UniformBuffer>(),
         };
-
         let uniform_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("egui_uniform_bind_group_layout"),
@@ -142,7 +141,9 @@ impl RenderPass {
                     visibility: wgpu::ShaderStages::VERTEX,
                     ty: wgpu::BindingType::Buffer {
                         has_dynamic_offset: false,
-                        min_binding_size: None,
+                        min_binding_size: std::num::NonZeroU64::new(
+                            std::mem::size_of::<UniformBuffer>() as u64,
+                        ),
                         ty: wgpu::BufferBindingType::Uniform,
                     },
                     count: None,
@@ -157,7 +158,7 @@ impl RenderPass {
                 resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                     buffer: &uniform_buffer.buffer,
                     offset: 0,
-                    size: None,
+                    size: std::num::NonZeroU64::new(std::mem::size_of::<UniformBuffer>() as u64),
                 }),
             }],
         });
