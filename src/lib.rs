@@ -12,6 +12,7 @@ use std::{
 };
 
 use bytemuck::{Pod, Zeroable};
+use egui::epaint;
 pub use wgpu;
 use wgpu::util::DeviceExt;
 
@@ -119,7 +120,7 @@ impl RenderPass {
             label: Some("egui_shader"),
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("shader/egui.wgsl"))),
         };
-        let module = device.create_shader_module(&shader);
+        let module = device.create_shader_module(shader);
 
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("egui_uniform_buffer"),
@@ -230,7 +231,7 @@ impl RenderPass {
             fragment: Some(wgpu::FragmentState {
                 module: &module,
                 entry_point: "fs_main",
-                targets: &[wgpu::ColorTargetState {
+                targets: &[Some(wgpu::ColorTargetState {
                     format: output_format,
                     blend: Some(wgpu::BlendState {
                         color: wgpu::BlendComponent {
@@ -245,7 +246,7 @@ impl RenderPass {
                         },
                     }),
                     write_mask: wgpu::ColorWrites::ALL,
-                }],
+                })],
             }),
             multiview: None,
         });
@@ -267,7 +268,7 @@ impl RenderPass {
         &self,
         encoder: &mut wgpu::CommandEncoder,
         color_attachment: &wgpu::TextureView,
-        paint_jobs: &[egui::epaint::ClippedMesh],
+        paint_jobs: &[egui::epaint::ClippedPrimitive],
         screen_descriptor: &ScreenDescriptor,
         clear_color: Option<wgpu::Color>,
     ) -> Result<(), BackendError> {
@@ -278,14 +279,14 @@ impl RenderPass {
         };
 
         let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            color_attachments: &[wgpu::RenderPassColorAttachment {
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: color_attachment,
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: load_operation,
                     store: true,
                 },
-            }],
+            })],
             depth_stencil_attachment: None,
             label: Some("egui main render pass"),
         });
@@ -302,7 +303,7 @@ impl RenderPass {
     pub fn execute_with_renderpass<'rpass>(
         &'rpass self,
         rpass: &mut wgpu::RenderPass<'rpass>,
-        paint_jobs: &[egui::epaint::ClippedMesh],
+        paint_jobs: &[egui::epaint::ClippedPrimitive],
         screen_descriptor: &ScreenDescriptor,
     ) -> Result<(), BackendError> {
         rpass.set_pipeline(&self.render_pipeline);
@@ -313,7 +314,16 @@ impl RenderPass {
         let physical_width = screen_descriptor.physical_width;
         let physical_height = screen_descriptor.physical_height;
 
-        for ((egui::ClippedMesh(clip_rect, mesh), vertex_buffer), index_buffer) in paint_jobs
+        for (
+            (
+                egui::ClippedPrimitive {
+                    clip_rect,
+                    primitive,
+                },
+                vertex_buffer,
+            ),
+            index_buffer,
+        ) in paint_jobs
             .iter()
             .zip(self.vertex_buffers.iter())
             .zip(self.index_buffers.iter())
@@ -352,12 +362,15 @@ impl RenderPass {
 
                 rpass.set_scissor_rect(x, y, width, height);
             }
-            let bind_group = self.get_texture_bind_group(mesh.texture_id)?;
-            rpass.set_bind_group(1, bind_group, &[]);
 
-            rpass.set_index_buffer(index_buffer.buffer.slice(..), wgpu::IndexFormat::Uint32);
-            rpass.set_vertex_buffer(0, vertex_buffer.buffer.slice(..));
-            rpass.draw_indexed(0..mesh.indices.len() as u32, 0, 0..1);
+            if let epaint::Primitive::Mesh(mesh) = primitive {
+                let bind_group = self.get_texture_bind_group(mesh.texture_id)?;
+                rpass.set_bind_group(1, bind_group, &[]);
+
+                rpass.set_index_buffer(index_buffer.buffer.slice(..), wgpu::IndexFormat::Uint32);
+                rpass.set_vertex_buffer(0, vertex_buffer.buffer.slice(..));
+                rpass.draw_indexed(0..mesh.indices.len() as u32, 0, 0..1);
+            }
         }
 
         Ok(())
@@ -396,12 +409,12 @@ impl RenderPass {
 
             let alpha_srgb_pixels: Option<Vec<_>> = match &image_delta.image {
                 egui::ImageData::Color(_) => None,
-                egui::ImageData::Alpha(a) => Some(a.srgba_pixels(1.0).collect()),
+                egui::ImageData::Font(a) => Some(a.srgba_pixels(1.0).collect()),
             };
 
             let image_data: &[u8] = match &image_delta.image {
                 egui::ImageData::Color(c) => bytemuck::cast_slice(c.pixels.as_slice()),
-                egui::ImageData::Alpha(_) => {
+                egui::ImageData::Font(_) => {
                     // The unwrap here should never fail as alpha_srgb_pixels will have been set to
                     // `Some` above.
                     bytemuck::cast_slice(
@@ -430,7 +443,7 @@ impl RenderPass {
                 egui::TextureId::User(u) => format!("egui_user_image_{}", u),
             };
 
-            match self.textures.entry(texture_id.clone()) {
+            match self.textures.entry(*texture_id) {
                 Entry::Occupied(mut o) => match image_delta.pos {
                     None => {
                         let (texture, bind_group) = create_texture_and_bind_group(
@@ -676,7 +689,7 @@ impl RenderPass {
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        paint_jobs: &[egui::epaint::ClippedMesh],
+        paint_jobs: &[egui::epaint::ClippedPrimitive],
         screen_descriptor: &ScreenDescriptor,
     ) {
         let index_size = self.index_buffers.len();
@@ -695,7 +708,12 @@ impl RenderPass {
             }]),
         );
 
-        for (i, egui::ClippedMesh(_, mesh)) in paint_jobs.iter().enumerate() {
+        for (i, egui::ClippedPrimitive { primitive, .. }) in paint_jobs.iter().enumerate() {
+            let mesh = match primitive {
+                epaint::Primitive::Mesh(mesh) => mesh,
+                epaint::Primitive::Callback(_) => continue,
+            };
+
             let data: &[u8] = bytemuck::cast_slice(&mesh.indices);
             if i < index_size {
                 self.update_buffer(device, queue, BufferType::Index, i, data)
