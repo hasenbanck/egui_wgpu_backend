@@ -788,6 +788,7 @@ impl RenderPass {
 }
 
 /// Create a texture and bind group from existing data
+#[allow(clippy::too_many_arguments)]
 fn create_texture_and_bind_group(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
@@ -829,7 +830,7 @@ fn create_texture_and_bind_group(
 
     let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some(format!("{}_texture_bind_group", label_base).as_str()),
-        layout: &texture_bind_group_layout,
+        layout: texture_bind_group_layout,
         entries: &[
             wgpu::BindGroupEntry {
                 binding: 0,
