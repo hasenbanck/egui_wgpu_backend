@@ -8,7 +8,6 @@ use std::{
     borrow::Cow,
     collections::{hash_map::Entry, HashMap},
     fmt::Formatter,
-    num::NonZeroU32,
 };
 
 use bytemuck::{Pod, Zeroable};
@@ -197,7 +196,7 @@ impl RenderPass {
             label: Some("egui_pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
-                entry_point: if output_format.describe().srgb {
+                entry_point: if output_format.is_srgb() {
                     "vs_main"
                 } else {
                     "vs_conv_main"
@@ -434,7 +433,7 @@ impl RenderPass {
 
             let image_data_layout = wgpu::ImageDataLayout {
                 offset: 0,
-                bytes_per_row: NonZeroU32::new(4 * image_size.width),
+                bytes_per_row: Some(4 * image_size.width),
                 rows_per_image: None,
             };
 
@@ -807,7 +806,7 @@ fn create_texture_and_bind_group(
         dimension: wgpu::TextureDimension::D2,
         format: wgpu::TextureFormat::Rgba8UnormSrgb,
         usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-        view_formats: &[]
+        view_formats: &[],
     });
 
     queue.write_texture(
