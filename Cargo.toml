@@ -16,5 +16,5 @@ web = []
 
 [dependencies]
 egui = { version = "0.21", features = ["bytemuck"] }
-wgpu = "0.15"
-bytemuck = "1.7"
+wgpu = "0.16"
+bytemuck = "1.13"
