@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.0] - 2023-04-29
+### Updated
+- Target wgpu 0.16
+
 ## [0.22.0] - 2023-02-16
 ### Updated
 - Target egui 0.21
