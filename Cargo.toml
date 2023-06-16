@@ -15,6 +15,6 @@ default = []
 web = []
 
 [dependencies]
-egui = { version = "0.21", features = ["bytemuck"] }
+egui = { version = "0.22", features = ["bytemuck"] }
 wgpu = "0.16"
 bytemuck = "1.13"
