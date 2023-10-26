@@ -283,11 +283,13 @@ impl RenderPass {
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: load_operation,
-                    store: true,
+                    store: wgpu::StoreOp::Store,
                 },
             })],
             depth_stencil_attachment: None,
             label: Some("egui main render pass"),
+            timestamp_writes: None,
+            occlusion_query_set: None,
         });
         rpass.push_debug_group("egui_pass");
 
