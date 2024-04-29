@@ -13,6 +13,7 @@ use std::{
 use bytemuck::{Pod, Zeroable};
 use egui::epaint;
 pub use wgpu;
+use wgpu::PipelineCompilationOptions;
 use wgpu::util::DeviceExt;
 
 /// Error that the backend can return.
@@ -210,6 +211,7 @@ impl RenderPass {
                     // 2: uint color
                     attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2, 2 => Uint32],
                 }],
+                compilation_options: PipelineCompilationOptions::default(),
             },
             primitive: wgpu::PrimitiveState {
                 topology: wgpu::PrimitiveTopology::TriangleList,
@@ -246,6 +248,7 @@ impl RenderPass {
                     }),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
+                compilation_options: PipelineCompilationOptions::default(),
             }),
             multiview: None,
         });
