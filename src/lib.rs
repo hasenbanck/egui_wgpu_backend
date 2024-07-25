@@ -13,8 +13,8 @@ use std::{
 use bytemuck::{Pod, Zeroable};
 use egui::epaint;
 pub use wgpu;
-use wgpu::PipelineCompilationOptions;
 use wgpu::util::DeviceExt;
+use wgpu::PipelineCompilationOptions;
 
 /// Error that the backend can return.
 #[derive(Debug)]
@@ -251,6 +251,7 @@ impl RenderPass {
                 compilation_options: PipelineCompilationOptions::default(),
             }),
             multiview: None,
+            cache: None,
         });
 
         Self {
