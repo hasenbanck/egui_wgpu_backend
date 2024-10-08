@@ -7,12 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.31.0] - 2024-10-08
+
+### Updated
+
+- Target egui 0.29
+- Update bytemuck dependency
+
 ## [0.30.0] - 2024-07-29
 
 ### Updated
 
 - Target egui 0.28
-- Target wgpu 0.22
+- Target wgpu 0.22`
 
 ## [0.29.0] - 2024-05-04
 
