@@ -197,11 +197,11 @@ impl RenderPass {
             label: Some("egui_pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
-                entry_point: if output_format.is_srgb() {
+                entry_point:Some( if output_format.is_srgb() {
                     "vs_main"
                 } else {
                     "vs_conv_main"
-                },
+                }),
                 module: &module,
                 buffers: &[wgpu::VertexBufferLayout {
                     array_stride: 5 * 4,
@@ -231,7 +231,7 @@ impl RenderPass {
 
             fragment: Some(wgpu::FragmentState {
                 module: &module,
-                entry_point: "fs_main",
+                entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: output_format,
                     blend: Some(wgpu::BlendState {
