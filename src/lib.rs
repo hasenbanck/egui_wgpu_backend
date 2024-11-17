@@ -197,7 +197,7 @@ impl RenderPass {
             label: Some("egui_pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
-                entry_point:Some( if output_format.is_srgb() {
+                entry_point: Some( if output_format.is_srgb() {
                     "vs_main"
                 } else {
                     "vs_conv_main"
