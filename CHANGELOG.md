@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.32.0] - 2024-11-20
+
+### Updated
+
+- Target wgpu 23.0
+
 ## [0.31.0] - 2024-10-08
 
 ### Updated
@@ -19,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Updated
 
 - Target egui 0.28
-- Target wgpu 0.22`
+- Target wgpu 22.0
 
 ## [0.29.0] - 2024-05-04
 
