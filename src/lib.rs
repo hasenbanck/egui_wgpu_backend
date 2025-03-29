@@ -437,7 +437,7 @@ impl RenderPass {
                 depth_or_array_layers: 1,
             };
 
-            let image_data_layout = wgpu::ImageDataLayout {
+            let image_data_layout = wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(4 * image_size.width),
                 rows_per_image: None,
@@ -471,7 +471,7 @@ impl RenderPass {
                     Some(_) => {
                         if let Some(texture) = o.get().0.as_ref() {
                             queue.write_texture(
-                                wgpu::ImageCopyTexture {
+                                wgpu::TexelCopyTextureInfo {
                                     texture,
                                     mip_level: 0,
                                     origin,
@@ -800,7 +800,7 @@ fn create_texture_and_bind_group(
     label_base: &str,
     origin: wgpu::Origin3d,
     image_data: &[u8],
-    image_data_layout: wgpu::ImageDataLayout,
+    image_data_layout: wgpu::TexelCopyBufferLayout,
     image_size: wgpu::Extent3d,
     texture_bind_group_layout: &wgpu::BindGroupLayout,
 ) -> (wgpu::Texture, wgpu::BindGroup) {
@@ -816,7 +816,7 @@ fn create_texture_and_bind_group(
     });
 
     queue.write_texture(
-        wgpu::ImageCopyTexture {
+        wgpu::TexelCopyTextureInfo {
             texture: &texture,
             mip_level: 0,
             origin,
