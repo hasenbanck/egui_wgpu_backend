@@ -284,6 +284,7 @@ impl RenderPass {
         let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: color_attachment,
+                depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: load_operation,
@@ -412,23 +413,8 @@ impl RenderPass {
                 None => wgpu::Origin3d::ZERO,
             };
 
-            let alpha_srgb_pixels: Option<Vec<_>> = match &image_delta.image {
-                egui::ImageData::Color(_) => None,
-                egui::ImageData::Font(a) => Some(a.srgba_pixels(Some(1.0)).collect()),
-            };
-
             let image_data: &[u8] = match &image_delta.image {
                 egui::ImageData::Color(c) => bytemuck::cast_slice(c.pixels.as_slice()),
-                egui::ImageData::Font(_) => {
-                    // The unwrap here should never fail as alpha_srgb_pixels will have been set to
-                    // `Some` above.
-                    bytemuck::cast_slice(
-                        alpha_srgb_pixels
-                            .as_ref()
-                            .expect("Alpha texture should have been converted already")
-                            .as_slice(),
-                    )
-                }
             };
 
             let image_size = wgpu::Extent3d {
